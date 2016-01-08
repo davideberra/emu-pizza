@@ -1,72 +1,32 @@
 /*
 
-   Space Invaders, (C) Taito 1978, Midway 1979
+    This file is part of Emu-Pizza
 
-   CPU: Intel 8080 @ 2MHz (CPU similar to the (newer) Zilog Z80)    
+    Emu-Pizza is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
 
-   Interrupts: $cf (RST 8) at the start of vblank, 
-               $d7 (RST $10) at the end of vblank.    
+    Emu-Pizza is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
-   Video: 256(x)*224(y) @ 60Hz, vertical monitor. Colours are simulated with a    
-   plastic transparent overlay and a background picture.    
-   Video hardware is very simple: 7168 bytes 1bpp bitmap (32 bytes per scan).    
-
-   Sound: SN76477 and samples.    
-
-   Memory map:    
-    ROM    
-    $0000-$07ff:    invaders.h    
-    $0800-$0fff:    invaders.g    
-    $1000-$17ff:    invaders.f    
-    $1800-$1fff:    invaders.e    
-
-    RAM    
-    $2000-$23ff:    work RAM    
-    $2400-$3fff:    video RAM    
-
-    $4000-:     RAM mirror   
+    You should have received a copy of the GNU General Public License
+    along with Emu-Pizza.  If not, see <http://www.gnu.org/licenses/>.
 
 */
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <strings.h>
+#include "i8080.h"
 
-/* struct to simulate 8080 registers and flags */
-typedef struct flags_s
-{
-    uint8_t  z:1;
-    uint8_t  s:1;
-    uint8_t  p:1;
-    uint8_t  cy:1;
-    uint8_t  ac:1;
-    uint8_t  pad:3;
-} flags_t;
-
-typedef struct state_s
-{
-    uint8_t  a;
-    uint8_t  b;
-    uint8_t  c;
-    uint8_t  d;
-    uint8_t  e;
-    uint8_t  h;
-    uint8_t  l;
-    uint16_t sp;
-    uint16_t pc;
-    flags_t  flags;
-    uint8_t  int_enable;
-} state_t;
-
-/* super mega global describing 8080 register and flags state */
-state_t state;
-
-/* all 16 bits of memory reachable by 8080 */
-unsigned char   memory[65536];
+/* state of the 8080 CPU */
+i8080_state_t state;
 
 /* precomputed parity check array */
-unsigned char   parity[256];
+uint8_t parity[256];
 
 /* macros to access pair of registers */
 #define BC (uint16_t) (((uint16_t) state.b << 8) + state.c)
@@ -74,8 +34,8 @@ unsigned char   parity[256];
 #define HL (uint16_t) (((uint16_t) state.h << 8) + state.l)
 
 /* macro to access addresses passed as parameters */
-#define ADDR (uint16_t) memory[state.pc + 1] + \
-             (uint16_t) (memory[state.pc + 2] << 8)
+#define ADDR (uint16_t) state.memory[state.pc + 1] + \
+             (uint16_t) (state.memory[state.pc + 2] << 8)
 
 /* print out the register and flags state */
 void print_state()
@@ -95,16 +55,6 @@ void print_state()
     printf("Z:  %x   S:  %x\n", state.flags.z, state.flags.s);
     printf("P:  %x   CY: %x   AC: %x\n", state.flags.p, state.flags.cy,
                                          state.flags.ac);
-}
-
-/* print out th video RAM */
-void print_video_ram()
-{
-    int i;
-
-    for (i=0; i<8192; i++)
-        if (memory[0x2400 + i])
-            printf("PIXEL LINEA %d COLONNA %d\n", i / 224, i % 224);
 }
 
 /* calc flags except for AC */
@@ -159,11 +109,11 @@ void calc_parity_array()
     }
 }
 
-/* pop the stack and move pc to popped address */
+/* pop the return address from the stack and move PC to that address */
 int ret()
 {
-    uint16_t addr = (uint16_t) memory[state.sp] +
-                    (uint16_t) (memory[state.sp + 1] << 8);
+    uint16_t addr = (uint16_t) state.memory[state.sp] +
+                    (uint16_t) (state.memory[state.sp + 1] << 8);
 
     state.sp += 2;
     state.pc = addr;
@@ -234,22 +184,36 @@ void sbb(uint8_t b)
 }
 
 
-/* push the current pc on the stack and move PC to the function addr */
+/* push the current PC on the stack and move PC to the function addr */
 int call(uint16_t addr)
 {
+    /* move to the next instruction */
     state.pc += 2;
-    memory[state.sp - 1] = state.pc >> 8;
-    memory[state.sp - 2] = state.pc & 0x00ff;
 
+    /* save it into stack */
+    state.memory[state.sp - 1] = state.pc >> 8;
+    state.memory[state.sp - 2] = state.pc & 0x00ff;
+
+    /* update stack pointer */
     state.sp -= 2;
+
+    /* move PC to the called function address */
     state.pc = addr;
 
     return 0;
 }
 
-int execute()
+int i8080_run()
 {
-    unsigned char code = memory[state.pc];
+    unsigned char code = state.memory[state.pc];
+
+    return i8080_execute(code);
+}
+
+/* really execute the OP. Could be ran by normal execution or *
+ * because an interrupt occours                               */
+int i8080_execute(unsigned char code)
+{  
     int b = 1;
     uint16_t *word, *word2;
     uint32_t answer32;
@@ -265,13 +229,13 @@ int execute()
         case 0x00: break;                           
 
         /* LXI  B    */
-        case 0x01: state.c = memory[state.pc + 1];   
-                   state.b = memory[state.pc + 2];
+        case 0x01: state.c = state.memory[state.pc + 1];   
+                   state.b = state.memory[state.pc + 2];
                    b = 3;
                    break;
 
         /* STAX B    */
-        case 0x02: memory[BC] = state.a;                    
+        case 0x02: state.memory[BC] = state.a;                    
                    break;                          
 
         /* INX  B    */
@@ -292,7 +256,7 @@ int execute()
                    break;
 
         /* MVI  B    */
-        case 0x06: state.b = memory[state.pc + 1];  
+        case 0x06: state.b = state.memory[state.pc + 1];  
                    b = 2;
                    break;
 
@@ -315,7 +279,7 @@ int execute()
                    break;
 
         /* LDAX B    */
-        case 0x0A: state.a = memory[BC];          
+        case 0x0A: state.a = state.memory[BC];          
                    break;
 
         /* DCX  B    */
@@ -336,7 +300,7 @@ int execute()
                    break;   
 
         /* MVI  C    */
-        case 0x0E: state.c = memory[state.pc + 1]; 
+        case 0x0E: state.c = state.memory[state.pc + 1]; 
                    b = 2;
                    break;
 
@@ -350,13 +314,13 @@ int execute()
         case 0x10: break;                           
 
         /* LXI  D    */
-        case 0x11: state.e = memory[state.pc + 1];  
-                   state.d = memory[state.pc + 2];
+        case 0x11: state.e = state.memory[state.pc + 1];  
+                   state.d = state.memory[state.pc + 2];
                    b = 3;
                    break;
 
         /* STAX D    */
-        case 0x12: memory[DE] = state.a;            
+        case 0x12: state.memory[DE] = state.a;            
                    break;
 
         /* INX  D    */
@@ -377,7 +341,7 @@ int execute()
                    break;   
 
         /* MVI  D    */
-        case 0x16: state.d = memory[state.pc + 1];  
+        case 0x16: state.d = state.memory[state.pc + 1];  
                    b = 2;
                    break;
 
@@ -400,7 +364,7 @@ int execute()
                    break;
 
         /* LDAX D    */
-        case 0x1A: state.a = memory[DE];            
+        case 0x1A: state.a = state.memory[DE];            
                    break;
 
         /* DCX  D    */
@@ -421,7 +385,7 @@ int execute()
                    break;
 
         /* MVI  E    */
-        case 0x1E: state.e = memory[state.pc + 1];   
+        case 0x1E: state.e = state.memory[state.pc + 1];   
                    b = 2;
                    break;
 
@@ -435,14 +399,14 @@ int execute()
         case 0x20: break;                        
 
         /* LXI  H    */
-        case 0x21: state.l = memory[state.pc + 1];   
-                   state.h = memory[state.pc + 2];
+        case 0x21: state.l = state.memory[state.pc + 1];   
+                   state.h = state.memory[state.pc + 2];
                    b = 3;
                    break;
 
         /* SHLD      */
-        case 0x22: memory[ADDR] = state.l; 
-                   memory[ADDR + 1] = state.h;
+        case 0x22: state.memory[ADDR] = state.l; 
+                   state.memory[ADDR + 1] = state.h;
                    b = 3;
                    break;
 
@@ -464,7 +428,7 @@ int execute()
                    break;
 
         /* MVI  H    */
-        case 0x26: state.h = memory[state.pc + 1];   
+        case 0x26: state.h = state.memory[state.pc + 1];   
                    b = 2;
                    break;
 
@@ -499,8 +463,8 @@ int execute()
                    break;
 
         /* LHLD      */
-        case 0x2A: state.h = memory[ADDR + 1];    
-                   state.l = memory[ADDR];
+        case 0x2A: state.h = state.memory[ADDR + 1];    
+                   state.l = state.memory[ADDR];
                    b = 3;
                    break;
 
@@ -522,7 +486,7 @@ int execute()
                    break;
 
         /* MVI  L    */
-        case 0x2E: state.l = memory[state.pc + 1];  
+        case 0x2E: state.l = state.memory[state.pc + 1];  
                    b = 2;
                    break;
 
@@ -534,13 +498,13 @@ int execute()
         case 0x30: break;                     
  
         /* LXI  SP   */
-        case 0x31: state.sp = (uint16_t) memory[state.pc + 1];  
-                   state.sp += (uint16_t) memory[state.pc + 2] << 8;
+        case 0x31: state.sp = (uint16_t) state.memory[state.pc + 1];  
+                   state.sp += (uint16_t) state.memory[state.pc + 2] << 8;
                    b = 3;
                    break;
 
         /* STA       */
-        case 0x32: memory[ADDR] = state.a;          
+        case 0x32: state.memory[ADDR] = state.a;          
                    b = 3;
                    break;
 
@@ -550,19 +514,19 @@ int execute()
 
         /* INR  M    */
         case 0x34: addr = (uint16_t) (state.h << 8) + state.l;  
-                   memory[addr]++;
-                   set_flags_no_cy(memory[addr] - 1, memory[addr]);
+                   state.memory[addr]++;
+                   set_flags_no_cy(state.memory[addr] - 1, state.memory[addr]);
                    break;
 
         /* DCR  M    */
         case 0x35: addr = (uint16_t) (state.h << 8) + state.l;  
-                   memory[addr]--;
-                   set_flags_no_cy(memory[addr] + 1, memory[addr]);
+                   state.memory[addr]--;
+                   set_flags_no_cy(state.memory[addr] + 1, state.memory[addr]);
                    break;
 
         /* MVI  M    */
         case 0x36: addr = (uint16_t) (state.h << 8) + state.l;   
-                   memory[addr] = memory[state.pc + 1];
+                   state.memory[addr] = state.memory[state.pc + 1];
                    break;
 
         /* STC       */
@@ -581,7 +545,7 @@ int execute()
                    break;
 
         /* LDA       */
-        case 0x3A: state.a = memory[ADDR];        
+        case 0x3A: state.a = state.memory[ADDR];        
                    b = 3;
                    break;
 
@@ -600,7 +564,7 @@ int execute()
                    break;
 
         /* MVI  A   */
-        case 0x3E: state.a = memory[state.pc + 1];   
+        case 0x3E: state.a = state.memory[state.pc + 1];   
                    b = 2;
                    break;
 
@@ -632,7 +596,7 @@ int execute()
                    break;  
 
         /* MOV  B,M  */
-        case 0x46: state.b = memory[HL]; 
+        case 0x46: state.b = state.memory[HL]; 
                    break;  
 
         /* MOV  B,A  */
@@ -664,7 +628,7 @@ int execute()
                    break;  
 
         /* MOV  C,M  */
-        case 0x4E: state.c = memory[HL]; 
+        case 0x4E: state.c = state.memory[HL]; 
                    break;  
 
         /* MOV  C,A  */
@@ -696,7 +660,7 @@ int execute()
                    break;  
 
         /* MOV  D,M  */
-        case 0x56: state.d = memory[HL]; 
+        case 0x56: state.d = state.memory[HL]; 
                    break;  
 
         /* MOV  D,A  */
@@ -728,7 +692,7 @@ int execute()
                    break;  
 
         /* MOV  E,M  */
-        case 0x5E: state.e = memory[HL]; 
+        case 0x5E: state.e = state.memory[HL]; 
                    break;  
 
         /* MOV  E,A  */
@@ -760,7 +724,7 @@ int execute()
                    break;  
 
         /* MOV  H,M  */
-        case 0x66: state.h = memory[HL]; 
+        case 0x66: state.h = state.memory[HL]; 
                    break;  
 
         /* MOV  H,A  */
@@ -792,7 +756,7 @@ int execute()
                    break;  
 
         /* MOV  L,M  */
-        case 0x6E: state.l = memory[HL]; 
+        case 0x6E: state.l = state.memory[HL]; 
                    break;  
 
         /* MOV  L,A  */
@@ -800,34 +764,34 @@ int execute()
                    break;  
 
         /* MOV  M,B  */
-        case 0x70: memory[HL] = state.b;
+        case 0x70: state.memory[HL] = state.b;
                    break;
 
         /* MOV  M,C  */
-        case 0x71: memory[HL] = state.c;
+        case 0x71: state.memory[HL] = state.c;
                    break;
 
         /* MOV  M,D  */
-        case 0x72: memory[HL] = state.d;
+        case 0x72: state.memory[HL] = state.d;
                    break;
 
         /* MOV  M,E  */
-        case 0x73: memory[HL] = state.e;
+        case 0x73: state.memory[HL] = state.e;
                    break;
 
         /* MOV  M,H  */
-        case 0x74: memory[HL] = state.h;
+        case 0x74: state.memory[HL] = state.h;
                    break;
 
         /* MOV  M,L  */
-        case 0x75: memory[HL] = state.l;
+        case 0x75: state.memory[HL] = state.l;
                    break;
 
         /* HLT       */
         case 0x76: return 1;
 
         /* MOV  M,A  */
-        case 0x77: memory[HL] = state.a;
+        case 0x77: state.memory[HL] = state.a;
                    break;
 
         /* MOV  A,B  */
@@ -855,7 +819,7 @@ int execute()
                    break;  
 
         /* MOV  A,M  */
-        case 0x7E: state.a = memory[HL]; 
+        case 0x7E: state.a = state.memory[HL]; 
                    break;  
 
         /* MOV  A,A  */
@@ -887,7 +851,7 @@ int execute()
                    break;   
 
         /* ADD  M    */
-        case 0x86: add(memory[HL]); 
+        case 0x86: add(state.memory[HL]); 
                    break;   
 
         /* ADD  A    */
@@ -919,7 +883,7 @@ int execute()
                    break;   
 
         /* ADC  M    */
-        case 0x8e: adc(memory[HL]);
+        case 0x8e: adc(state.memory[HL]);
                    break;   
 
         /* ADC  A    */
@@ -951,7 +915,7 @@ int execute()
                    break;   
 
         /* SUB  M    */
-        case 0x96: sub(memory[HL]);
+        case 0x96: sub(state.memory[HL]);
                    break;   
 
         /* SUB  A    */
@@ -983,7 +947,7 @@ int execute()
                    break;   
 
         /* SBB  M    */
-        case 0x9e: sbb(memory[HL]); 
+        case 0x9e: sbb(state.memory[HL]); 
                    break;   
 
         /* SBB  A    */
@@ -1021,7 +985,7 @@ int execute()
                    break;
 
         /* ANA  M    */
-        case 0xA6: state.a &= memory[HL];
+        case 0xA6: state.a &= state.memory[HL];
                    set_flags_new((uint16_t) state.a, 0);
                    break;
 
@@ -1061,7 +1025,7 @@ int execute()
                    break;
 
         /* XRA  M    */
-        case 0xAE: state.a ^= memory[HL];
+        case 0xAE: state.a ^= state.memory[HL];
                    set_flags_new((uint16_t) state.a, 0);
                    break;
 
@@ -1101,7 +1065,7 @@ int execute()
                    break;
 
         /* ORA  M    */
-        case 0xB6: state.a |= memory[HL];
+        case 0xB6: state.a |= state.memory[HL];
                    set_flags_new((uint16_t) state.a, 0);
                    break;
 
@@ -1141,7 +1105,7 @@ int execute()
                    break;
 
         /* CMP  M    */
-        case 0xBE: answer = (uint16_t) state.a - memory[HL];
+        case 0xBE: answer = (uint16_t) state.a - state.memory[HL];
                    set_flags(answer);
                    break;
 
@@ -1157,8 +1121,8 @@ int execute()
                    break;
 
         /* POP  B    */
-        case 0xC1: state.c = memory[state.sp]; 
-                   state.b = memory[state.sp + 1];
+        case 0xC1: state.c = state.memory[state.sp]; 
+                   state.b = state.memory[state.sp + 1];
                    state.sp += 2;
                    break;
 
@@ -1184,47 +1148,16 @@ int execute()
                    break;
 
         /* PUSH B    */
-        case 0xC5: memory[state.sp - 1] = state.b;
-                   memory[state.sp - 2] = state.c;
+        case 0xC5: state.memory[state.sp - 1] = state.b;
+                   state.memory[state.sp - 2] = state.c;
                    state.sp -= 2;
                    break;
 
         /* CALL addr */
-        case 0xCD: 
-		   if (ADDR == 5)    
-		   {
-			   if (state.c == 9)
-			   {    
-				   uint16_t offset = (state.d<<8) | (state.e);    
-				   unsigned char *str = &memory[offset+3];      
-				   while (*str != '$')
-					   printf("%c", *str++);    
-                                   printf("%c%02x%02x", *str, *(str+1),
-                                                        *(str+2));
-
-				   printf("\n");    
-			   }    
-			   else if (state.c == 2)    
-			   {    
-				   //saw this in the inspected code, never saw it called    
-				   printf ("print char routine called\n");    
-			   }    
-
-                           return 1;
-
-			   b = 3;
-
-			   break;
-		   }    
-		   else if (ADDR == 0)    
-		   {    
-			   exit(0);    
-		   }    
-
-                   return call(ADDR);
+        case 0xCD: return call(ADDR);
 
         /* ADI       */
-        case 0xC6: answer = (uint16_t) state.a + memory[state.pc + 1];
+        case 0xC6: answer = (uint16_t) state.a + state.memory[state.pc + 1];
                    set_flags(answer);
                    state.a = (uint8_t) answer & 0xff; 
                    b = 2;
@@ -1257,7 +1190,7 @@ int execute()
  
         /* ACI       */
         case 0xCE: answer = (uint16_t) state.a + 
-                            memory[state.pc + 1] +
+                            state.memory[state.pc + 1] +
                             state.flags.cy;
                    set_flags(answer);
                    state.a = (uint8_t) answer & 0xff;
@@ -1270,8 +1203,8 @@ int execute()
                    break;
 
         /* POP  D    */
-        case 0xD1: state.e = memory[state.sp]; 
-                   state.d = memory[state.sp + 1];
+        case 0xD1: state.e = state.memory[state.sp]; 
+                   state.d = state.memory[state.sp + 1];
                    state.sp += 2;
                    break;
 
@@ -1297,17 +1230,21 @@ int execute()
                    break;
 
         /* PUSH D    */
-        case 0xD5: memory[state.sp - 1] = state.d;
-                   memory[state.sp - 2] = state.e;
+        case 0xD5: state.memory[state.sp - 1] = state.d;
+                   state.memory[state.sp - 2] = state.e;
                    state.sp -= 2;
                    break;
 
         /* SUI       */
-        case 0xD6: answer = (uint16_t) state.a - memory[state.pc + 1];
+        case 0xD6: answer = (uint16_t) state.a - state.memory[state.pc + 1];
                    set_flags(answer);
                    state.a = (uint8_t) answer & 0xff;
                    b = 2;
                    break;
+
+        /* RST  2    */
+        case 0xD7: return call(0x0008 * 2);
+                  
 
         /* RC        */
         case 0xD8: if (state.flags.cy)
@@ -1324,6 +1261,10 @@ int execute()
                    b = 3;
                    break;
 
+        /* IN        */
+        case 0xDB: b = 2;    /* every rom must override this behaviour */
+                   break;
+
         /* CC        */
         case 0xDC: if (state.flags.cy)
                        return call(ADDR);
@@ -1333,10 +1274,8 @@ int execute()
 
         /* SBI       */
         case 0xDE: answer = (uint16_t) state.a -
-                            memory[state.pc + 1] -
+                            state.memory[state.pc + 1] -
                             state.flags.cy;
-                   printf("SBI: A: %02x - MEM: %02x - ANSWER: %04x\n",
-                          state.a, memory[state.pc + 1], answer);
                    set_flags(answer);
                    state.a = (uint8_t) answer & 0xff;
                    b = 2;
@@ -1365,7 +1304,7 @@ int execute()
                    break;
 
         /* ANI       */
-        case 0xE6: state.a &= memory[state.pc + 1];
+        case 0xE6: state.a &= state.memory[state.pc + 1];
                    set_flags((uint16_t) state.a);
                    b = 2;                      
                    break;
@@ -1376,17 +1315,17 @@ int execute()
                    break;
 
         /* POP  H    */
-        case 0xE1: state.l = memory[state.sp]; 
-                   state.h = memory[state.sp + 1];
+        case 0xE1: state.l = state.memory[state.sp]; 
+                   state.h = state.memory[state.sp + 1];
                    state.sp += 2;
                    break;
     
         /* XTHL      */
-        case 0xE3: xchg = memory[state.sp]; 
-                   memory[state.sp] = state.l;
+        case 0xE3: xchg = state.memory[state.sp]; 
+                   state.memory[state.sp] = state.l;
                    state.l = xchg;
-                   xchg = memory[state.sp + 1];
-                   memory[state.sp + 1] = state.h;
+                   xchg = state.memory[state.sp + 1];
+                   state.memory[state.sp + 1] = state.h;
                    state.h = xchg;
                    break;     
 
@@ -1407,8 +1346,8 @@ int execute()
                    break;
 
         /* PUSH H    */
-        case 0xE5: memory[state.sp - 1] = state.h;
-                   memory[state.sp - 2] = state.l;
+        case 0xE5: state.memory[state.sp - 1] = state.h;
+                   state.memory[state.sp - 2] = state.l;
                    state.sp -= 2;
                    break;
 
@@ -1428,7 +1367,7 @@ int execute()
                    break;
 
         /* XRI       */
-        case 0xEE: answer = (uint16_t) state.a ^ memory[state.pc + 1];
+        case 0xEE: answer = (uint16_t) state.a ^ state.memory[state.pc + 1];
                    set_flags(answer);
                    state.a = (uint8_t) answer;
                    b = 2;
@@ -1441,8 +1380,8 @@ int execute()
 
         /* POP  PSW  */
         case 0xF1: p = (uint8_t *) &state.flags;
-                   *p         = memory[state.sp];
-                   state.a    = memory[state.sp + 1];
+                   *p         = state.memory[state.sp];
+                   state.a   = state.memory[state.sp + 1];
                    state.sp += 2;
                    break;  
 
@@ -1465,13 +1404,13 @@ int execute()
  
         /* PUSH PSW  */
         case 0xF5: p = (uint8_t *) &state.flags;
-                   memory[state.sp - 1] = state.h;
-                   memory[state.sp - 2] = *p;
+                   state.memory[state.sp - 1] = state.h;
+                   state.memory[state.sp - 2] = *p;
                    state.sp -= 2;
                    break;
 
         /* ORI       */
-        case 0xF6: answer = (uint16_t) state.a | memory[state.pc + 1];
+        case 0xF6: answer = (uint16_t) state.a | state.memory[state.pc + 1];
                    set_flags(answer);
                    state.a = (uint8_t) answer;
                    b = 2;
@@ -1508,23 +1447,25 @@ int execute()
                    break;
 
         /* CPI      */
-        case 0xFE: answer = (uint16_t) state.a - memory[state.pc + 1];
+        case 0xFE: answer = (uint16_t) state.a - state.memory[state.pc + 1];
                    set_flags(answer);
                    b = 2;                      
                    break;
 
         default:
-            printf("UNKNOWN OP CODE: %02x\n", code);
+//            printf("UNKNOWN OP CODE: %02x\n", code);
             return 1;
     }
 
+    /* make the PC points to the next instruction */
     state.pc += b;
+
     return 0;
 }
 
 
 
-int disassemble(unsigned char *codebuffer, int pc)
+int i8080_disassemble(unsigned char *codebuffer, int pc)
 {
     unsigned char code = codebuffer[pc];
     int b = 1;
@@ -1935,8 +1876,6 @@ int disassemble(unsigned char *codebuffer, int pc)
                    break;
         case 0xFF: printf("RST  7"); break;    /* call $38         */
 
-
-
         default:
             printf("UNKNOWN: %02x", code);
     }
@@ -1946,72 +1885,14 @@ int disassemble(unsigned char *codebuffer, int pc)
     return b;
 }
 
-int main(int argc, char **argv)
+/* init registers, flags and state.memory of intel 8080 system */
+i8080_state_t *i8080_init(void)
 {
-    FILE *f= fopen(argv[1], "rb");    
-
-    if (f==NULL)    
-    {    
-        printf("error: Couldn't open %s\n", argv[1]);    
-        return 1;    
-    }
-
-    //Get the file size and read it into a memory buffer    
-    fseek(f, 0L, SEEK_END);    
-    int fsize = ftell(f);    
-    fseek(f, 0L, SEEK_SET);    
-
     /* wipe all the structs */
-    bzero(&state, sizeof(state_t));
-    bzero(memory, sizeof(memory));
+    bzero(&state, sizeof(i8080_state_t));
 
     /* setup parity array */
     calc_parity_array();
 
-    /* read the 8192 bytes of ROM image into first 8192 of memory */
-    fread(&memory[0x0100], fsize, 1, f);    
-    fclose(f);   
-
-    int pc = 0;
-    int debug = 0;
-
-    /* debug purposes */
-    while (debug && pc < 8192)
-    {
-        pc += disassemble(memory, pc);
-    }
-
-    if (debug == 1)
-        return;
-
-    int i = 0;
-
-    state.pc = 0x0100;
-
-    memory[368] = 0x7;
-
-    /* skip DAA test */
-/*    memory[0x59c] = 0xc3; 
-    memory[0x59d] = 0xc2;    
-    memory[0x59e] = 0x05; 
-*/
-
-    /* running stuff! */
-    for (i=0;i<1500000;i++)
-    {
-        disassemble(memory, state.pc);
-
-        if (execute())
-        {
-            printf("ciclo %d\n",i);
-            break;
-        }
-    }
-
-    printf("cicli ESEGUITI: %d\n", i);
-
-    print_state();
-    print_video_ram();
-
-    return 0;
+    return &state;
 }
