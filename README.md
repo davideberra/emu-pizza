@@ -27,6 +27,14 @@ Usage
 emu-pizza [cpudiag.bin|invaders|8080EX1.com]
 ```
 
+Space Invaders keys
+-------------------
+* Arrow up -- Add 1 credit
+* Arrow left/right -- Move ship
+* Space -- Fire
+* 1/2 -- Start 1/2 player(s)
+* Q -- Exit
+
 Supported ROMS
 --------------
 * [cpudiag.bin](http://www.emulator101.com/files/cpudiag.bin) -- An Intel 8080/8085 diagnostic ROM [asm file](http://www.emulator101.com/files/cpudiag.asm) 
