@@ -21,15 +21,35 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <unistd.h>
+#include <SDL2/SDL.h>
 #include "i8080.h"
 #include "space_invaders.h"
 
 /* Space Invaders runs on i8080 CPU, so let's instanciate its state struct */
 i8080_state_t *i8080_state;
 
-/* shift values for handling a custom behaviour of Space Invaders bit-shifting chip */
+/* shift values for handling a custom behaviour of */
+/* Space Invaders bit-shifting chip                */
 uint16_t shift0, shift1, shift_offset;
 
+/* window we'll be rendering to */
+SDL_Window *window = NULL;
+
+/* surface contained by the window */
+SDL_Surface *screenSurface = NULL;
+
+/* SDL keyboard state reference  */
+const Uint8 *kb_state; 
+
+/* set this to 1 if want to stop execution */
+char quit = 0;
+
+uint16_t latest_interrupt = 0xD7;
+
+/* timer handler semaphore */
+char timer_sem = 0;
+char timer_triggered = 0;
 
 /*  
     handler for IN operation 
@@ -58,25 +78,60 @@ uint16_t shift0, shift1, shift_offset;
 */
 void space_invaders_in(uint8_t port)
 {
-    uint8_t  byte;
     uint16_t word;
 
     switch(port)
     {
-        case 1: printf("IN 1\n");
-
-                /* we must act as the hardware listening to the port 1 
+        case 1: /* we must act as the hardware listening to the port 1 
                    and set a register accordingly to the above schema  */
 
                 /* e.g state->a = 0x08 if P1 shoot is pressed */
+                i8080_state->a = 0x01;
+
+                /* refresh keyboard state */
+                SDL_PumpEvents();
+
+                /* check if Q is pressed */
+                if (kb_state[SDL_SCANCODE_Q])
+                {
+                    quit = 1;
+                    return;
+                }
+
+                /* UP pressed? +1 coin */
+                if (kb_state[SDL_SCANCODE_UP])
+                    i8080_state->a = 0;                 
+
+                /* 2 pressed? 2 players start */
+                if (kb_state[SDL_SCANCODE_2])
+                    i8080_state->a |= 0x02;                 
+
+                /* 1 pressed? 1 player start */
+                if (kb_state[SDL_SCANCODE_1])
+                    i8080_state->a |= 0x04;                 
+
+                /* space pressed? fire */
+                if (kb_state[SDL_SCANCODE_SPACE])
+                    i8080_state->a |= 0x10;                 
+
+                /* left pressed? guess what */
+                if (kb_state[SDL_SCANCODE_LEFT])
+                    i8080_state->a |= 0x20;                 
+
+                /* right pressed? guess what */
+                if (kb_state[SDL_SCANCODE_RIGHT])
+                    i8080_state->a |= 0x40;                 
+
                 break;
        
-        case 2: printf("IN 2\n");
+        case 2: i8080_state->a = 0x00;
                 break;
 
         case 3: word = (shift1 << 8) | shift0; 
-                i8080_state->a = (uint8_t) ((word >> (8 - shift_offset)) & 0xff);
+                i8080_state->a = (uint8_t)((word >> (8 - shift_offset)) & 0xff);
                 break;
+
+        default: printf("UNKNOWN IN PORT\n"); sleep(5);
     }
 
     return;
@@ -96,39 +151,122 @@ void space_invaders_in(uint8_t port)
     will make the game run, but but only in attract mode)    
 
 */
-void space_invaders_out(uint8_t port, uint8_t value)
+void space_invaders_out(uint8_t port)
 {
     switch(port)
     {
-        case 2: shift_offset = value & 0x07;
+        case 2: shift_offset = i8080_state->a; 
                 break;
 
         case 4: shift0 = shift1;
-                shift1 = value;
+                shift1 = i8080_state->a;
                 break;
     }
 
     return;
 }
 
-
-/* called to synchronize video refresh rate */
+/* callback for timer events (120 timer per second) */
 void space_invaders_timer_handler(int sig, siginfo_t *si, void *uc)
 {
-    /* execute the RST 2 instruction */
-    i8080_execute(0xD7);
+    timer_triggered = 1;
 }
+
+
+/* called to synchronize video refresh rate */
+void space_invaders_video_interrupt()
+{
+    int x, y, ib, i;
+    uint8_t b, c, *p;
+  
+    if (timer_sem)
+        return;
+
+    timer_sem = 1;
+
+    /* refresh keyboard state */   
+    SDL_PumpEvents();
+
+    /* check if Q is pressed */
+    if (kb_state[SDL_SCANCODE_Q]) 
+    {
+        quit = 1;
+        return;
+    }        
+ 
+    /* execute the RST 2 instruction */
+    if (i8080_state->int_enable)
+    {
+        if (latest_interrupt == 0xD7)
+        {
+            i8080_execute(0xCF);
+            latest_interrupt = 0xCF;
+        }
+        else
+        {
+            i8080_execute(0xD7);
+            latest_interrupt = 0xD7;
+        }
+    }
+
+    /* refresh video! remember... it's 90 degrees rotated */
+    for (x=0; x<256; x+=8)
+    {
+        for (y=0; y<224; y++)
+        { 
+            /* calc index of video memory */
+            i = ((y * 256) + x) / 8;
+
+            /* get byte from video RAM of the game */
+            b = i8080_state->memory[0x2400 + i];
+
+            /* calc base index of SDL pixels buffer */
+            i = (((255 - x) * 224) + y);
+
+            /* loop over each bit of the byte */
+            for (ib=0; ib<8; ib++)
+            {
+                /* get black or white pixel */
+                c = b & 0x01;
+
+                /* update SDL pixels buffer */
+                p = (uint8_t *) screenSurface->pixels + 
+                                (i * 4) - ((ib * 4) * 224);
+
+                *p = c ? 0xFF : 0x00;
+                *(p + 1) = c ? 0xFF : 0x00;
+                *(p + 2) = c ? 0xFF : 0x00;
+                *(p + 3) = 0xFF;
+
+                /* shift it */
+                b = b >> 1;
+            }
+        }
+    }
+
+    /* Update the surface */
+    SDL_UpdateWindowSurface(window);
+
+    timer_sem = 0;
+}
+
+
 
 /* entry point for Space Invaders emulate */
 void space_invaders_start(uint8_t *rom, size_t size)
 {
-    int i;
-    uint16_t addr;
-    uint8_t  op, port, value;
+    uint8_t  op, port;
     struct itimerspec timer;
     struct sigevent   te;
     struct sigaction  sa;
     timer_t           timer_id = 0;
+
+    /* Initialize SDL */
+    if (SDL_Init(SDL_INIT_VIDEO) < 0 )
+    {
+        printf( "SDL could not initialize! SDL_Error: %s\n", SDL_GetError() );
+        return;
+    }
 
     /* sanity check */
     if (size > I8080_MAX_MEMORY)
@@ -136,6 +274,18 @@ void space_invaders_start(uint8_t *rom, size_t size)
         printf("this ROM can't fit into memory\n");
         return;
     }
+
+    window = SDL_CreateWindow("Emu Pizza - Space Invaders",
+                              SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED,
+                              224, 256, 
+                              SDL_WINDOW_SHOWN);
+
+    // Get window surface
+    screenSurface = SDL_GetWindowSurface(window);
+
+    /* get keyboard state reference */
+    kb_state = SDL_GetKeyboardState(NULL);
 
     /* init 8080 */
     i8080_state = i8080_init(); 
@@ -157,20 +307,18 @@ void space_invaders_start(uint8_t *rom, size_t size)
     te.sigev_value.sival_ptr = &timer_id; 
     timer_create(CLOCK_REALTIME, &te, &timer_id);
 
-    /* initialize 1 sec timer */
+    /* initialize 120 hits per seconds timer (twice per drawn frame) */
     timer.it_value.tv_sec = 1;
     timer.it_value.tv_nsec = 0;
     timer.it_interval.tv_sec = 0;
-    timer.it_interval.tv_nsec = 500000000;
+    timer.it_interval.tv_nsec = 1000000000 / 120;
     
     /* start timer */
     timer_settime(timer_id, 0, &timer, NULL);
 
     /* running stuff! */
-    for (;;)
+    while (!quit)
     {
-        i8080_disassemble(i8080_state->memory, i8080_state->pc);
-
         /* get op */
         op   = i8080_state->memory[i8080_state->pc];
 
@@ -184,14 +332,24 @@ void space_invaders_start(uint8_t *rom, size_t size)
 
             /* OUT    */
             case 0xD3: port  = i8080_state->memory[i8080_state->pc + 1];
-                       value = i8080_state->memory[i8080_state->pc + 2];
-                       space_invaders_out(port, value);
+                       space_invaders_out(port);
                        break;
         }
 
         /* IN and OUT are = NOP in i8080 stack */
         if (i8080_run())
+        {
+            quit = 1;
+
             break;
+        }
+
+        /* interrupts to handle? */
+        if (timer_triggered)
+        {
+            space_invaders_video_interrupt();
+            timer_triggered = 0;
+        }
     }
 
     /* stop timer */

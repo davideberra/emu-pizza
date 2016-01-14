@@ -26,16 +26,19 @@
 /* structs emulating 8080 registers and flags */
 typedef struct i8080_flags_s
 {
+    uint8_t  cy:1;
+    uint8_t  u1:1;
+    uint8_t  p:1;
+    uint8_t  u3:1;
+    uint8_t  ac:1;
+    uint8_t  u5:1;
     uint8_t  z:1;
     uint8_t  s:1;
-    uint8_t  p:1;
-    uint8_t  cy:1;
-    uint8_t  ac:1;
-    uint8_t  pad:3;
 } i8080_flags_t;
 
 typedef struct i8080_state_s
 {
+    i8080_flags_t  flags;
     uint8_t        a;
     uint8_t        b;
     uint8_t        c;
@@ -45,9 +48,9 @@ typedef struct i8080_state_s
     uint8_t        l;
     uint16_t       sp;
     uint16_t       pc;
-    i8080_flags_t  flags;
     uint8_t        int_enable;
     uint8_t        memory[65536];
+    uint32_t       cycles;
 } i8080_state_t;
 
 /* defines    */
@@ -57,5 +60,7 @@ typedef struct i8080_state_s
 i8080_state_t *i8080_init(void);
 int            i8080_run(void);
 int            i8080_execute(unsigned char code);
+int            i8080_disassemble(unsigned char *codebuffer, int pc);
+void           i8080_print_state(void);
 
 #endif
