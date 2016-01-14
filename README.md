@@ -36,4 +36,4 @@ Supported ROMS
 Credits
 -------
 
-Thanks to [Emulator 101](http://www.emulator101.com), the source of all my current knowkledge on 8080 emulation
+Thanks to [Emulator 101](http://www.emulator101.com), the source of all my current knowledge on 8080 emulation
