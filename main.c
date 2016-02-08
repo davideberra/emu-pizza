@@ -18,9 +18,10 @@
 */
 
 #include <stdio.h>
-#include "cpudiag.h"
-#include "exercize.h"
-#include "space_invaders.h"
+#include "system/cpudiag.h"
+#include "system/exercize.h"
+#include "system/exercize_z80.h"
+#include "system/space_invaders.h"
 
 /* rom memory segment */
 uint8_t rom[65536];
@@ -50,12 +51,18 @@ int main(int argc, char **argv)
     /* try to recognize the ROM by size.. (forgive me, it's just a beginning) */
     if (sz == 1453)
         cpudiag_start(rom, sz);
+    else if (sz == 12288)
+        space_invaders_start(rom, sz);
     else if (sz == 8192)
         space_invaders_start(rom, sz);
     else if (sz == 4608)
         exercize_start(rom, sz);
     else if (sz == 1024)
         exercize_start(rom, sz);
+    else if (sz == 8585)
+        exercize_start(rom, sz);
+    else if (sz == 8704)
+        exercize_z80_start(rom, sz);
     else
         printf("unknown ROM\n");
 

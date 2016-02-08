@@ -23,11 +23,11 @@
 #include <time.h>
 #include <unistd.h>
 #include <SDL2/SDL.h>
-#include "cpu/i8080.h"
+#include "cpu/z80.h"
 #include "space_invaders.h"
 
-/* Space Invaders runs on i8080 CPU, so let's instanciate its state struct */
-i8080_state_t *i8080_state;
+/* Space Invaders runs on z80 CPU, so let's instanciate its state struct */
+z80_state_t *z80_state;
 
 /* shift values for handling a custom behaviour of */
 /* Space Invaders bit-shifting chip                */
@@ -86,7 +86,7 @@ void space_invaders_in(uint8_t port)
                    and set a register accordingly to the above schema  */
 
                 /* e.g state->a = 0x08 if P1 shoot is pressed */
-                i8080_state->a = 0x01;
+                z80_state->a = 0x01;
 
                 /* refresh keyboard state */
                 SDL_PumpEvents();
@@ -100,35 +100,35 @@ void space_invaders_in(uint8_t port)
 
                 /* UP pressed? +1 coin */
                 if (kb_state[SDL_SCANCODE_UP])
-                    i8080_state->a = 0;     
+                    z80_state->a = 0;     
 
                 /* 2 pressed? 2 players start */
                 if (kb_state[SDL_SCANCODE_2])
-                    i8080_state->a |= 0x02;                 
+                    z80_state->a |= 0x02;                 
 
                 /* 1 pressed? 1 player start */
                 if (kb_state[SDL_SCANCODE_1])
-                    i8080_state->a |= 0x04;                 
+                    z80_state->a |= 0x04;                 
 
                 /* space pressed? fire */
                 if (kb_state[SDL_SCANCODE_SPACE])
-                    i8080_state->a |= 0x10;                 
+                    z80_state->a |= 0x10;                 
 
                 /* left pressed? guess what */
                 if (kb_state[SDL_SCANCODE_LEFT])
-                    i8080_state->a |= 0x20;                 
+                    z80_state->a |= 0x20;                 
 
                 /* right pressed? guess what */
                 if (kb_state[SDL_SCANCODE_RIGHT])
-                    i8080_state->a |= 0x40;                 
+                    z80_state->a |= 0x40;                 
 
                 break;
        
-        case 2: i8080_state->a = 0x03;
+        case 2: z80_state->a = 0x03;
                 break;
 
         case 3: word = (shift1 << 8) | shift0; 
-                i8080_state->a = (uint8_t)((word >> (8 - shift_offset)) & 0xff);
+                z80_state->a = (uint8_t)((word >> (8 - shift_offset)) & 0xff);
                 break;
 
         default: printf("UNKNOWN IN PORT\n"); sleep(5);
@@ -155,11 +155,11 @@ void space_invaders_out(uint8_t port)
 {
     switch(port)
     {
-        case 2: shift_offset = i8080_state->a; 
+        case 2: shift_offset = z80_state->a; 
                 break;
 
         case 4: shift0 = shift1;
-                shift1 = i8080_state->a;
+                shift1 = z80_state->a;
                 break;
     }
 
@@ -195,16 +195,16 @@ void space_invaders_video_interrupt()
     }        
  
     /* execute the RST 2 instruction */
-    if (i8080_state->int_enable)
+    if (z80_state->int_enable)
     {
         if (latest_interrupt == 0xD7)
         {
-            i8080_execute(0xCF);
+            z80_execute(0xCF);
             latest_interrupt = 0xCF;
         }
         else
         {
-            i8080_execute(0xD7);
+            z80_execute(0xD7);
             latest_interrupt = 0xD7;
         }
     }
@@ -218,7 +218,7 @@ void space_invaders_video_interrupt()
             i = ((y * 256) + x) / 8;
 
             /* get byte from video RAM of the game */
-            b = i8080_state->memory[0x2400 + i];
+            b = z80_state->memory[0x2400 + i];
 
             /* calc base index of SDL pixels buffer */
             i = (((255 - x) * 224) + y);
@@ -269,7 +269,7 @@ void space_invaders_start(uint8_t *rom, size_t size)
     }
 
     /* sanity check */
-    if (size > I8080_MAX_MEMORY)
+    if (size > Z80_MAX_MEMORY)
     {
         printf("this ROM can't fit into memory\n");
         return;
@@ -288,10 +288,10 @@ void space_invaders_start(uint8_t *rom, size_t size)
     kb_state = SDL_GetKeyboardState(NULL);
 
     /* init 8080 */
-    i8080_state = i8080_init(); 
+    z80_state = z80_init(); 
 
     /* load ROM at 0x0000 address of system memory */
-    memcpy(i8080_state->memory, rom, size);
+    memcpy(z80_state->memory, rom, size);
 
     /* prepare timer to emulate video refresh interrupts */
     sa.sa_flags = SA_SIGINFO;
@@ -320,24 +320,24 @@ void space_invaders_start(uint8_t *rom, size_t size)
     while (!quit)
     {
         /* get op */
-        op   = i8080_state->memory[i8080_state->pc];
+        op   = z80_state->memory[z80_state->pc];
 
         /* create a branch for every OP to override */
         switch (op)
         {
             /* IN     */
-            case 0xDB: port = i8080_state->memory[i8080_state->pc + 1];
+            case 0xDB: port = z80_state->memory[z80_state->pc + 1];
                        space_invaders_in(port);
                        break;
 
             /* OUT    */
-            case 0xD3: port  = i8080_state->memory[i8080_state->pc + 1];
+            case 0xD3: port  = z80_state->memory[z80_state->pc + 1];
                        space_invaders_out(port);
                        break;
         }
 
-        /* IN and OUT are = NOP in i8080 stack */
-        if (i8080_run())
+        /* IN and OUT are = NOP in z80 stack */
+        if (z80_run())
         {
             quit = 1;
 

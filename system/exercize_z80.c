@@ -32,6 +32,7 @@ z80_state_t *z80_state;
 void exercize_z80_start(uint8_t *rom, size_t size)
 {
     uint16_t addr;
+    uint8_t  op;
 
     /* sanity check */
     if (size + 0x0100 > Z80_MAX_MEMORY)
@@ -61,32 +62,70 @@ void exercize_z80_start(uint8_t *rom, size_t size)
     z80_state->memory[6] = 0x00; 
     z80_state->memory[7] = 0xC9; 
 
+    time_t ts, tc;
+
+    time(&ts);
+
+//    int cyc = 0;
+
+   
+    /* TESTONE */
+
+    if (0)
+    {
+        int i=0; 
+        int j=0; 
+
+        uint8_t vvv = 12;
+
+        for (i=0;i<32000;i++)
+            for (j=0;j<32000;j++)
+                z80_sl(&vvv, i % 2);
+
+        printf("DIARREA: %02x - %02x \n", vvv, *state.f);
+
+        exit(0);
+    }
+
+
     /* running stuff! */
     for (;;)
     {
+
+/*        cyc++;
+
+        if (cyc == 500000000)
+            exit(0);
+*/
+        /* get op */
+        op = z80_state->memory[z80_state->pc];
+
         /* override CALL instruction */
-        if (z80_state->memory[z80_state->pc] == 0xCD)
+        if (op == 0xCD)
         {
-            addr = (uint16_t) z80_state->memory[z80_state->pc + 1] | \
-                   (uint16_t) (z80_state->memory[z80_state->pc + 2] << 8);
-
-            if (addr == 5)
+            if (z80_state->memory[z80_state->pc + 2] == 0)
             {
-                if (z80_state->c == 9)
+                if (z80_state->memory[z80_state->pc + 1] == 5)
                 {
-                    uint16_t offset = (z80_state->d<<8) | (z80_state->e);
-                    unsigned char *str = &z80_state->memory[offset];
+                    if (z80_state->c == 9)
+                    {
+                        time(&tc);
+                        printf("PASSATI %d SECS\n", tc - ts);
 
-                    while (*str != '$')
-                         printf("%c", *str++); 
-                }
-                if (z80_state->c == 2) putchar((char) z80_state->e);
-            }      
-            else if (addr == 0)
-                     break;
+                        uint16_t offset = (z80_state->d<<8) | (z80_state->e);
+                        unsigned char *str = &z80_state->memory[offset];
+    
+                        while (*str != '$')
+                             printf("%c", *str++); 
+                    }
+                    if (z80_state->c == 2) putchar((char) z80_state->e);
+                }      
+                else if (z80_state->memory[z80_state->pc + 1] == 0)
+                         break;
+            }
         }
 
-        if (z80_run())
+        if (z80_execute(op))
             break;
 
         if (z80_state->pc == 0x0000)
