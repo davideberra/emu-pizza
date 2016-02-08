@@ -54,10 +54,6 @@ uint8_t       parity[512];
 #define NN (state.memory[state.pc + 2] | \
            (state.memory[state.pc + 3] << 8))
 
-/* AC flags tables */
-// int z80_ac_table[] = { 0, 0, 1, 0, 1, 0, 1, 1 };
-// int z80_sub_ac_table[] = { 0, 1, 1, 1, 0, 0, 0, 1 };
-
 /* dummy value for 0x06 regs resulution table */
 uint8_t dummy;
 
@@ -144,6 +140,12 @@ void static inline mmu_move(unsigned int d, unsigned int s)
     state.memory[d] = state.memory[s];
 }
 
+/* return absolute memory address */
+uint8_t static inline *mmu_addr(unsigned int a)
+{
+    return &state.memory[a];
+}
+
 /* read 8 bit data from a memory addres */
 uint8_t static inline z80_read_mem(unsigned int a)
 {
@@ -205,9 +207,6 @@ void static inline z80_set_flags_szc(unsigned int v)
 /* calc flags SZPC with 16 bit result */
 void static inline z80_set_flags_szpc(unsigned int v)
 {
-    if (v > 512)
-        printf("MAGGIORAO\n");
-
     z80_set_flags_sz(v);
     state.flags.p  = parity[v];
     state.flags.cy = (v > 0xff);
@@ -216,9 +215,6 @@ void static inline z80_set_flags_szpc(unsigned int v)
 /* calc flags SZ53P with 16 bit result */
 void static inline z80_set_flags_sz53p(unsigned int v)
 {
-    if (v > 512)
-        printf("MAGGIORAO\n");
-
     z80_set_flags_sz(v);
     z80_set_flags_53(v);
     state.flags.p  = parity[v];
@@ -600,8 +596,6 @@ void static inline z80_cmp(uint8_t b)
 /* compare b parameter against A register and calculate flags */
 void static inline z80_cpid(uint8_t b, int8_t add)
 {
-    char ac;
-
     /* calc result */
     unsigned int result = state.a - b;
 
@@ -1200,7 +1194,7 @@ int static inline z80_ext_cb_execute()
 
     /* if reg == 0x06, refresh the pointer */
     if (reg == 0x06)
-        regs_src[0x06] = &state.memory[*state.hl]; 
+        regs_src[0x06] = mmu_addr(*state.hl); 
 
     switch (cbfam)
     {
@@ -1427,8 +1421,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* LD  H,(IX+d)   */
-        case 0x66: d = state.memory[state.pc + 2];
-                   state.h = state.memory[*state.ix + d];
+        case 0x66: d = z80_read_mem(state.pc + 2);
+                   state.h = z80_read_mem(*state.ix + d);
                    b = 3;
                    break;
 
@@ -1472,49 +1466,49 @@ int static inline z80_ext_dd_execute()
 
         /* MOV (IX+d), B  */
         case 0x70: d = z80_read_mem(state.pc + 2);
-                   state.memory[*state.ix + d] = state.b;
+                   z80_write_mem(*state.ix + d, state.b);
                    b = 3;
                    break;
 
         /* MOV (IX+d), C  */
-        case 0x71: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.c;
+        case 0x71: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.c);
                    b = 3;
                    break;
 
         /* MOV (IX+d), D  */
-        case 0x72: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.d;
+        case 0x72: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.d);
                    b = 3;
                    break;
 
         /* MOV (IX+d), E  */
-        case 0x73: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.e;
+        case 0x73: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.e);
                    b = 3;
                    break;
 
         /* MOV (IX+d), H  */
-        case 0x74: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.h;
+        case 0x74: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.h);
                    b = 3;
                    break;
 
         /* MOV (IX+d), L  */
-        case 0x75: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.l;
+        case 0x75: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.l);
                    b = 3;
                    break;
 
         /* MOV (IX+d), A  */
-        case 0x77: d = state.memory[state.pc + 2];
-                   state.memory[*state.ix + d] = state.a;
+        case 0x77: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.ix + d, state.a);
                    b = 3;
                    break;
 
         /* LD  A,(IX+d)   */
-        case 0x7E: d = state.memory[state.pc + 2];
-                   state.a = state.memory[*state.ix + d];
+        case 0x7E: d = z80_read_mem(state.pc + 2);
+                   state.a = z80_read_mem(*state.ix + d);
                    b = 3;
                    break;
 
@@ -1527,8 +1521,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* ADD (IX+d)     */
-        case 0x86: d = state.memory[state.pc + 2];
-                   z80_add(state.memory[*state.ix + d]);
+        case 0x86: d = z80_read_mem(state.pc + 2);
+                   z80_add(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1541,8 +1535,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* ADC (IX+d)    */
-        case 0x8E: d = state.memory[state.pc + 2];
-                   z80_adc(state.memory[*state.ix + d]);
+        case 0x8E: d = z80_read_mem(state.pc + 2);
+                   z80_adc(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1555,8 +1549,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* SUB (IX+d)     */
-        case 0x96: d = state.memory[state.pc + 2];
-                   z80_sub(state.memory[*state.ix + d]);
+        case 0x96: d = z80_read_mem(state.pc + 2);
+                   z80_sub(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1569,8 +1563,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* SBC (IX+d)     */
-        case 0x9E: d = state.memory[state.pc + 2];
-                   z80_sbc(state.memory[*state.ix + d]);
+        case 0x9E: d = z80_read_mem(state.pc + 2);
+                   z80_sbc(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1583,8 +1577,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* ANA (IX+d)     */
-        case 0xA6: d = state.memory[state.pc + 2];
-                   z80_ana(state.memory[*state.ix + d]);
+        case 0xA6: d = z80_read_mem(state.pc + 2);
+                   z80_ana(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1597,8 +1591,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* XRA (IX+d)     */
-        case 0xAE: d = state.memory[state.pc + 2];
-                   z80_xra(state.memory[*state.ix + d]);
+        case 0xAE: d = z80_read_mem(state.pc + 2);
+                   z80_xra(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1611,8 +1605,8 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* ORA (IX+d)     */
-        case 0xB6: d = state.memory[state.pc + 2];
-                   z80_ora(state.memory[*state.ix + d]);
+        case 0xB6: d = z80_read_mem(state.pc + 2);
+                   z80_ora(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
@@ -1625,19 +1619,19 @@ int static inline z80_ext_dd_execute()
                    break;
 
         /* CMP (IX+d)     */
-        case 0xBE: d = state.memory[state.pc + 2];
-                   z80_cmp(state.memory[*state.ix + d]);
+        case 0xBE: d = z80_read_mem(state.pc + 2);
+                   z80_cmp(z80_read_mem(*state.ix + d));
                    b = 3;
                    break;
 
         /* DDCB Operation */
-        case 0xCB: d = state.memory[state.pc + 2];
+        case 0xCB: d = z80_read_mem(state.pc + 2);
 
                    /* bit 6-7 reprezent family of DDCB op */
-                   ddcbfam = state.memory[state.pc + 3] >> 6;
+                   ddcbfam = z80_read_mem(state.pc + 3) >> 6;
 
                    /* bit 0-2 reprezent output register */
-                   reg = state.memory[state.pc + 3] & 0x07;
+                   reg = z80_read_mem(state.pc + 3) & 0x07;
 
                    switch (ddcbfam)
                    {
@@ -1645,81 +1639,70 @@ int static inline z80_ext_dd_execute()
                        case 0x00: 
  
                            /* bit 3-5 reprezent ROT operation */
-                           ddcbop = state.memory[state.pc + 3] & 0x38;
+                           ddcbop = z80_read_mem(state.pc + 3) & 0x38;
                                   
                            switch(ddcbop)
                            {
                                /* RLC (IX+d) REG */
                                case 0x00: *regs_dst[reg] = 
-                                          z80_rl(&state.memory[*state.ix + d], 1);
+                                          z80_rl(mmu_addr(*state.ix + d), 1);
                                           break;
 
                                /* RRC (IX+d) REG */
                                case 0x08: *regs_dst[reg] = 
-                                          z80_rr(&state.memory[*state.ix + d], 1);
+                                          z80_rr(mmu_addr(*state.ix + d), 1);
                                           break;
 
                                /* RL  (IX+d) REG */
                                case 0x10: *regs_dst[reg] = 
-                                          z80_rl(&state.memory[*state.ix + d], 0);
+                                          z80_rl(mmu_addr(*state.ix + d), 0);
                                           break;
 
                                /* RR  (IX+d) REG */
                                case 0x18: *regs_dst[reg] = 
-                                          z80_rr(&state.memory[*state.ix + d], 0);
+                                          z80_rr(mmu_addr(*state.ix + d), 0);
                                           break;
 
                                /* SLA (IX+d) REG */
                                case 0x20: *regs_dst[reg] = 
-                                          z80_sl(&state.memory[*state.ix + d], 0);
+                                          z80_sl(mmu_addr(*state.ix + d), 0);
                                           break;
 
                                /* SRA (IX+d) REG */
                                case 0x28: *regs_dst[reg] = 
-                                          z80_sr(&state.memory[*state.ix + d], 1);
+                                          z80_sr(mmu_addr(*state.ix + d), 1);
                                           break;
 
                                /* SLL (IX+d) REG */
                                case 0x30: *regs_dst[reg] = 
-                                          z80_sl(&state.memory[*state.ix + d], 1);
+                                          z80_sl(mmu_addr(*state.ix + d), 1);
                                           break;
 
                                /* SRL (IX+d) REG */
                                case 0x38: *regs_dst[reg] = 
-                                          z80_sr(&state.memory[*state.ix + d], 0);
+                                          z80_sr(mmu_addr(*state.ix + d), 0);
                                           break;
 
-/*                               default: printf("Unimplemented DDCB family: %02x"
-                                               " - MEM: %02x %02x\n",      
-                                               ddcbfam,
-                                               state.memory[state.pc + 2],
-                                               state.memory[state.pc + 3]); */
                            }
                            break;
 
                        /* BIT Family */
-                       case 0x01: z80_bit(&state.memory[*state.ix + d], 
+                       case 0x01: z80_bit(mmu_addr(*state.ix + d), 
                                       (state.memory[state.pc + 3] >> 3) & 0x07, 
                                       d);
                                   break;
                        
                        /* RES Family */
                        case 0x02: *regs_dst[reg] = 
-                                      z80_res(&state.memory[*state.ix + d], 
+                                      z80_res(mmu_addr(*state.ix + d), 
                                       (state.memory[state.pc + 3] >> 3) & 0x07);
                                   break;
                        
                        /* SET Family */
                        case 0x03: *regs_dst[reg] = 
-                                      z80_set(&state.memory[*state.ix + d], 
+                                      z80_set(mmu_addr(*state.ix + d), 
                                       (state.memory[state.pc + 3] >> 3) & 0x07);
                                   break;
-                       
-/*                       default: printf("Unimplemented DDCB family: %02x"
-                                       " - MEM: %02x %02x\n", 
-                                       ddcbfam,
-                                       state.memory[state.pc + 2],
-                                       state.memory[state.pc + 3]); */
                      
                    }
 
@@ -1750,7 +1733,7 @@ int static inline z80_ext_ed_execute()
     int b = 2;
 
     /* i already know it's an ED - get the next byte */
-    unsigned char code = state.memory[state.pc + 1];
+    unsigned char code = z80_read_mem(state.pc + 1);
 
     switch (code)
     {
@@ -1833,7 +1816,7 @@ int static inline z80_ext_ed_execute()
                    break;
 
         /* CPI        */
-        case 0xA1: z80_cpid(state.memory[*state.hl], 1);
+        case 0xA1: z80_cpid(z80_read_mem(*state.hl), 1);
                    break;
 
         /* LDD        */
@@ -1841,7 +1824,7 @@ int static inline z80_ext_ed_execute()
                    break;
 
         /* CPD        */
-        case 0xA9: z80_cpid(state.memory[*state.hl], -1);
+        case 0xA9: z80_cpid(z80_read_mem(*state.hl), -1);
                    break;
 
         /* LDIR       */
@@ -1852,8 +1835,8 @@ int static inline z80_ext_ed_execute()
         case 0xB1: state.flags.z = 0;
 
                    /* loop until BC != 0 and z != 1 */
-                   while ((*state.f & (1 << FLAG_OFFSET_Z)) == 0 && *state.bc != 0)
-                       z80_cpid(state.memory[*state.hl], 1);
+                   while (state.flags.z == 0 && *state.bc != 0)
+                       z80_cpid(z80_read_mem(*state.hl), 1);
 
                    break;
 
@@ -1968,26 +1951,26 @@ int static inline z80_ext_fd_execute()
                    break;
 
         /* LD  B,(IY+d)   */
-        case 0x46: d = state.memory[state.pc + 2];
-                   state.b = state.memory[*state.iy + d];
+        case 0x46: d = z80_read_mem(state.pc + 2);
+                   state.b = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
         /* LD  C,(IY+d)   */
-        case 0x4E: d = state.memory[state.pc + 2];
-                   state.c = state.memory[*state.iy + d];
+        case 0x4E: d = z80_read_mem(state.pc + 2);
+                   state.c = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
         /* LD  D,(IY+d)   */
-        case 0x56: d = state.memory[state.pc + 2];
-                   state.d = state.memory[*state.iy + d];
+        case 0x56: d = z80_read_mem(state.pc + 2);
+                   state.d = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
         /* LD  E,(IY+d)   */
-        case 0x5E: d = state.memory[state.pc + 2];
-                   state.e = state.memory[*state.iy + d];
+        case 0x5E: d = z80_read_mem(state.pc + 2);
+                   state.e = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
@@ -2016,8 +1999,8 @@ int static inline z80_ext_fd_execute()
                    break;
 
         /* LD  H,(IY+d)   */
-        case 0x66: d = state.memory[state.pc + 2];
-                   state.h = state.memory[*state.iy + d];
+        case 0x66: d = z80_read_mem(state.pc + 2);
+                   state.h = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
@@ -2050,8 +2033,8 @@ int static inline z80_ext_fd_execute()
                    break;
 
         /* LD  L,(IY+d)   */
-        case 0x6E: d = state.memory[state.pc + 2];
-                   state.l = state.memory[*state.iy + d];
+        case 0x6E: d = z80_read_mem(state.pc + 2);
+                   state.l = z80_read_mem(*state.iy + d);
                    b = 3;
                    break;
 
@@ -2060,44 +2043,44 @@ int static inline z80_ext_fd_execute()
                    break;
 
         /* MOV (IY+d), B  */
-        case 0x70: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.b;
+        case 0x70: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.b);
                    b = 3;
                    break;
 
         /* MOV (IY+d), C  */
-        case 0x71: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.c;
+        case 0x71: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.c);
                    b = 3;
                    break;
 
         /* MOV (IY+d), D  */
-        case 0x72: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.d;
+        case 0x72: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.d);
                    b = 3;
                    break;
 
         /* MOV (IY+d), E  */
-        case 0x73: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.e;
+        case 0x73: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.e);
                    b = 3;
                    break;
 
         /* MOV (IY+d), H  */
-        case 0x74: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.h;
+        case 0x74: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.h);
                    b = 3; 
                    break;
 
         /* MOV (IY+d), L  */
-        case 0x75: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.l;
+        case 0x75: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.l);
                    b = 3;
                    break;
 
         /* MOV (IY+d), L  */
-        case 0x77: d = state.memory[state.pc + 2];
-                   state.memory[*state.iy + d] = state.a;
+        case 0x77: d = z80_read_mem(state.pc + 2);
+                   z80_write_mem(*state.iy + d, state.a);
                    b = 3;
                    break;
 
@@ -2234,61 +2217,61 @@ int static inline z80_ext_fd_execute()
                            {
                                /* RLC (IY+d) REG */
                                case 0x00: *regs_dst[reg] = 
-                                          z80_rl(&state.memory[*state.iy + d], 1);
+                                          z80_rl(mmu_addr(*state.iy + d), 1);
                                           break;
 
                                /* RRC (IY+d) REG */
                                case 0x08: *regs_dst[reg] = 
-                                          z80_rr(&state.memory[*state.iy + d], 1);
+                                          z80_rr(mmu_addr(*state.iy + d), 1);
                                           break;
 
                                /* RL  (IY+d) REG */
                                case 0x10: *regs_dst[reg] = 
-                                          z80_rl(&state.memory[*state.iy + d], 0);
+                                          z80_rl(mmu_addr(*state.iy + d), 0);
                                           break;
 
                                /* RR  (IY+d) REG */
                                case 0x18: *regs_dst[reg] = 
-                                          z80_rr(&state.memory[*state.iy + d], 0);
+                                          z80_rr(mmu_addr(*state.iy + d), 0);
                                           break;
 
                                /* SLA (IY+d) REG */
                                case 0x20: *regs_dst[reg] = 
-                                          z80_sl(&state.memory[*state.iy + d], 0);
+                                          z80_sl(mmu_addr(*state.iy + d), 0);
                                           break;
 
                                /* SRA (IY+d) REG */
                                case 0x28: *regs_dst[reg] = 
-                                          z80_sr(&state.memory[*state.iy + d], 1);
+                                          z80_sr(mmu_addr(*state.iy + d), 1);
                                           break;
 
                                /* SLL (IY+d) REG */
                                case 0x30: *regs_dst[reg] = 
-                                          z80_sl(&state.memory[*state.iy + d], 1);
+                                          z80_sl(mmu_addr(*state.iy + d), 1);
                                           break;
 
                                /* SRL (IY+d) REG */
                                case 0x38: *regs_dst[reg] = 
-                                          z80_sr(&state.memory[*state.iy + d], 0);
+                                          z80_sr(mmu_addr(*state.iy + d), 0);
                                           break;
 
                            }
                            break;
 
                        /* BIT Family */
-                       case 0x01: z80_bit(&state.memory[*state.iy + d],
+                       case 0x01: z80_bit(mmu_addr(*state.iy + d),
                                   (z80_read_mem(state.pc + 3) >> 3) & 0x07, d);
                                   break;
 
                        /* RES Family */
                        case 0x02: *regs_dst[reg] = 
-                                  z80_res(&state.memory[*state.iy + d],
+                                  z80_res(mmu_addr(*state.iy + d),
                                       (z80_read_mem(state.pc + 3) >> 3) & 0x07);
                                   break;
 
                        /* SET Family */
                        case 0x03: *regs_dst[reg] = 
-                                  z80_set(&state.memory[*state.iy + d],
+                                  z80_set(mmu_addr(*state.iy + d),
                                       (z80_read_mem(state.pc + 3) >> 3) & 0x07);
                                   break;
 
@@ -3546,7 +3529,7 @@ z80_state_t static *z80_init()
         regs_src[0x03] = &state.e;
         regs_src[0x04] = &state.h;
         regs_src[0x05] = &state.l;
-        regs_src[0x06] = &state.memory[*state.hl];
+        regs_src[0x06] = mmu_addr(*state.hl);
         regs_src[0x07] = &state.a;
 //    }
  
@@ -3583,15 +3566,5 @@ z80_state_t static *z80_init()
     z80_calc_sz53pc_array();
 
     return &state;
-}
-
-
-
-
-static int z80_run()
-{
-    unsigned char code = state.memory[state.pc];
-
-    return z80_execute(code);
 }
 
