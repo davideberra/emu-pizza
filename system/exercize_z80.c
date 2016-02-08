@@ -31,7 +31,6 @@ z80_state_t *z80_state;
 /* entry point for cpudiag emulate */
 void exercize_z80_start(uint8_t *rom, size_t size)
 {
-    uint16_t addr;
     uint8_t  op;
 
     /* sanity check */

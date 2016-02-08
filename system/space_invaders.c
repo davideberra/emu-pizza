@@ -337,7 +337,7 @@ void space_invaders_start(uint8_t *rom, size_t size)
         }
 
         /* IN and OUT are = NOP in z80 stack */
-        if (z80_run())
+        if (z80_execute(op))
         {
             quit = 1;
 
