@@ -61,41 +61,9 @@ void exercize_z80_start(uint8_t *rom, size_t size)
     z80_state->memory[6] = 0x00; 
     z80_state->memory[7] = 0xC9; 
 
-    time_t ts, tc;
-
-    time(&ts);
-
-//    int cyc = 0;
-
-   
-    /* TESTONE */
-
-    if (0)
-    {
-        int i=0; 
-        int j=0; 
-
-        uint8_t vvv = 12;
-
-        for (i=0;i<32000;i++)
-            for (j=0;j<32000;j++)
-                z80_sl(&vvv, i % 2);
-
-        printf("DIARREA: %02x - %02x \n", vvv, *state.f);
-
-        exit(0);
-    }
-
-
     /* running stuff! */
     for (;;)
     {
-
-/*        cyc++;
-
-        if (cyc == 500000000)
-            exit(0);
-*/
         /* get op */
         op = z80_state->memory[z80_state->pc];
 
@@ -108,9 +76,6 @@ void exercize_z80_start(uint8_t *rom, size_t size)
                 {
                     if (z80_state->c == 9)
                     {
-                        time(&tc);
-                        printf("PASSATI %d SECS\n", tc - ts);
-
                         uint16_t offset = (z80_state->d<<8) | (z80_state->e);
                         unsigned char *str = &z80_state->memory[offset];
     
