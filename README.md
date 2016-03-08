@@ -47,6 +47,7 @@ Supported ROMS
 --------------
 * [cpudiag.bin](http://www.emulator101.com/files/cpudiag.bin) -- An Intel 8080/8085 diagnostic ROM [asm file](http://www.emulator101.com/files/cpudiag.asm) 
 * [8080 Exercizer](https://github.com/begoon/8080ex1) -- A tougher Intel 8080 exercizer
+* Zextest -- A Zilog Z80 exercizer
 * Space Invaders -- Guess what
 * Gameboy roms with no MBC -- (e.g. Tetris, Dr Mario, Amida)
 
