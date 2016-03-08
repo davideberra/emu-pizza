@@ -39,8 +39,8 @@ uint8_t parity[256];
                         (state.memory[state.pc + 2] << 8)
 
 /* AC flags tables */
-int i8080_ac_table[] = { 0, 0, 1, 0, 1, 0, 1, 1 };
-int i8080_sub_i8080_ac_table[] = { 1, 0, 0, 0, 1, 1, 1, 0 };
+int ac_table[] = { 0, 0, 1, 0, 1, 0, 1, 1 };
+int sub_ac_table[] = { 1, 0, 0, 0, 1, 1, 1, 0 };
 
 
 /* print out the register and flags state */
@@ -64,23 +64,25 @@ void i8080_print_state()
 }
 
 /* calc flags except for AC */
-void i8080_set_flags(uint16_t answer)
+void set_flags(uint16_t answer)
 {
     state.flags.z  = ((answer & 0xff) == 0);    
     state.flags.s  = ((answer & 0x80) == 0x80);    
     state.flags.cy = (answer > 0xff);    
     state.flags.p  = parity[answer & 0xff];    
+
+//    printf("Z FLAG: %d\n", state.flags.z);
 }
 
 /* calc flags and ac will be set */
-void i8080_set_flags_new(uint16_t answer, uint8_t ac)
+void set_flags_ac(uint16_t answer, uint8_t ac)
 {
-    i8080_set_flags(answer);
+    set_flags(answer);
     state.flags.ac = ac;
 }
 
-/* i8080_called after an INC or DRC. It sets AC flag but not CY */
-void i8080_set_flags_no_cy(uint8_t answer, uint8_t ac)
+/* called after an INC or DRC. It sets AC flag but not CY */
+void set_flags_no_cy(uint8_t answer, uint8_t ac)
 {
     state.flags.z  = ((answer & 0xff) == 0);    
     state.flags.s  = ((answer & 0x80) == 0x80);    
@@ -91,7 +93,7 @@ void i8080_set_flags_no_cy(uint8_t answer, uint8_t ac)
 }
 
 /* calculate parity array (parity set to 1 if number of ONES is even) */
-void i8080_calc_parity_array()
+void calc_parity_array()
 {
     int i = 0, j = 0, n = 0;
     uint8_t b;
@@ -118,7 +120,7 @@ void i8080_calc_parity_array()
 }
 
 /* pop the return address from the stack and move PC to that address */
-int i8080_ret()
+int ret()
 {
     uint16_t addr = (uint16_t) state.memory[state.sp] +
                     (uint16_t) (state.memory[state.sp + 1] << 8);
@@ -130,7 +132,7 @@ int i8080_ret()
 }
 
 /* add A register and b parameter and calculate flags */
-void i8080_add(uint8_t b)
+void add(uint8_t b)
 {
     /* calc result */
     uint16_t result = state.a + b;
@@ -141,7 +143,7 @@ void i8080_add(uint8_t b)
                     ((result & 0x88) >> 3);
 
     /* calc flags */
-    i8080_set_flags_new(result, i8080_ac_table[ihct & 0x07]);
+    set_flags_ac(result, ac_table[ihct & 0x07]);
     
     /* save result into A register */
     state.a = (uint8_t) result & 0xff;
@@ -150,7 +152,7 @@ void i8080_add(uint8_t b)
 }
 
 /* add A register, b parameter and Carry flag, then calculate flags */
-void i8080_adc(uint8_t b)
+void adc(uint8_t b)
 {
     /* calc result */
     uint16_t result = state.a + b + state.flags.cy;
@@ -161,7 +163,7 @@ void i8080_adc(uint8_t b)
                     ((result & 0x88) >> 3);
 
     /* calc flags */
-    i8080_set_flags_new(result, i8080_ac_table[ihct & 0x07]); 
+    set_flags_ac(result, ac_table[ihct & 0x07]); 
 
     /* save result into A register */
     state.a = (uint8_t) result & 0xff;
@@ -169,8 +171,8 @@ void i8080_adc(uint8_t b)
     return; 
 }
 
-/* i8080_subtract b parameter from A register and calculate flags */
-void i8080_sub(uint8_t b)
+/* subtract b parameter from A register and calculate flags */
+void sub(uint8_t b)
 {
     /* calc result */
     uint16_t result = state.a - b;
@@ -181,7 +183,7 @@ void i8080_sub(uint8_t b)
                     ((result & 0x88) >> 3);
 
     /* calc flags */
-    i8080_set_flags_new(result, i8080_sub_i8080_ac_table[ihct & 0x07]);
+    set_flags_ac(result, sub_ac_table[ihct & 0x07]);
 
     /* save result into A register */
     state.a = (uint8_t) result & 0xff;
@@ -189,7 +191,7 @@ void i8080_sub(uint8_t b)
     return;
 }
 
-/* i8080_subtract b parameter and Carry from A register and calculate flags */
+/* subtract b parameter and Carry from A register and calculate flags */
 void sbb(uint8_t b)
 {
     /* calc result */
@@ -201,7 +203,7 @@ void sbb(uint8_t b)
                     ((result & 0x88) >> 3);
 
     /* calc flags */
-    i8080_set_flags_new(result, i8080_sub_i8080_ac_table[ihct & 0x07]);
+    set_flags_ac(result, sub_ac_table[ihct & 0x07]);
 
     /* save result into A register */
     state.a = (uint8_t) result & 0xff;
@@ -210,7 +212,7 @@ void sbb(uint8_t b)
 }
 
 /* compare b parameter against A register and calculate flags */
-void i8080_cmp(uint8_t b)
+void cmp(uint8_t b)
 {
     /* calc result */ 
     uint16_t result = state.a - b;
@@ -221,19 +223,19 @@ void i8080_cmp(uint8_t b)
                     ((result & 0x88) >> 3);
 
     /* calc flags */
-    i8080_set_flags_new(result, i8080_sub_i8080_ac_table[ihct & 0x07]);
+    set_flags_ac(result, sub_ac_table[ihct & 0x07]);
 
     return;
 }
 
 /*  b AND A register and calculate flags */
-void i8080_ana(uint8_t b)
+void ana(uint8_t b)
 {
     /* calc result */
     uint8_t result = state.a & b;
 
     /* calc flags */
-    i8080_set_flags_new((uint16_t) result, (((state.a | b) & 0x08) != 0));
+    set_flags_ac((uint16_t) result, (((state.a | b) & 0x08) != 0));
 
     /* save result into A register */
     state.a = result;
@@ -241,8 +243,8 @@ void i8080_ana(uint8_t b)
     return;
 }
 
-/* same as i8080_call, but save on the stack the current PC instead of next instr */
-int i8080_intr(uint16_t addr)
+/* same as call, but save on the stack the current PC instead of next instr */
+int intr(uint16_t addr)
 {
     // state.pc--;
 
@@ -253,15 +255,22 @@ int i8080_intr(uint16_t addr)
     /* update stack pointer */
     state.sp -= 2;
 
-    /* move PC to the i8080_called function address */
+    /* move PC to the called function address */
     state.pc = addr;
 
     return 0;
 }
 
 /* push the current PC on the stack and move PC to the function addr */
-int i8080_call(uint16_t addr)
+int call(uint16_t addr)
 {
+//    printf("CALL ADDR: %04x\n", addr);
+
+/*    if (addr != 0x0010 && addr != 0x0000 && addr != 0x17cd && 
+        addr != 0x0abf && addr != 0x01e6)
+       sleep(5);
+*/
+
     /* move to the next instruction */
     state.pc += 3;
 
@@ -272,7 +281,7 @@ int i8080_call(uint16_t addr)
     /* update stack pointer */
     state.sp -= 2;
 
-    /* move PC to the i8080_called function address */
+    /* move PC to the called function address */
     state.pc = addr;
 
     return 0;
@@ -321,12 +330,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  B    */
         case 0x04: state.b++;                   
-                   i8080_set_flags_no_cy(state.b, ((state.b & 0x0f) == 0x00));
+                   set_flags_no_cy(state.b, ((state.b & 0x0f) == 0x00));
                    break;   
 
         /* DCR  B    */
         case 0x05: state.b--;                     
-                   i8080_set_flags_no_cy(state.b, !((state.b & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.b, !((state.b & 0x0f) == 0x0f));
                    break;
 
         /* MVI  B    */
@@ -365,12 +374,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  C    */
         case 0x0C: state.c++;                 
-                   i8080_set_flags_no_cy(state.c, ((state.c & 0x0f) == 0x00));
+                   set_flags_no_cy(state.c, ((state.c & 0x0f) == 0x00));
                    break;   
 
         /* DCR  C    */
         case 0x0D: state.c--;            
-                   i8080_set_flags_no_cy(state.c, !((state.c & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.c, !((state.c & 0x0f) == 0x0f));
                    break;   
 
         /* MVI  C    */
@@ -406,12 +415,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  D    */
         case 0x14: state.d++;                
-                   i8080_set_flags_no_cy(state.d, ((state.d & 0x0f) == 0x00));
+                   set_flags_no_cy(state.d, ((state.d & 0x0f) == 0x00));
                    break;   
 
         /* DCR  D    */
         case 0x15: state.d--;              
-                   i8080_set_flags_no_cy(state.d, !((state.d & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.d, !((state.d & 0x0f) == 0x0f));
                    break;   
 
         /* MVI  D    */
@@ -449,12 +458,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  E    */
         case 0x1C: state.e++;                  
-                   i8080_set_flags_no_cy(state.e, ((state.e & 0x0f) == 0x00));
+                   set_flags_no_cy(state.e, ((state.e & 0x0f) == 0x00));
                    break;
 
         /* DCR  E    */
         case 0x1D: state.e--;                       
-                   i8080_set_flags_no_cy(state.e, !((state.e & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.e, !((state.e & 0x0f) == 0x0f));
                    break;
 
         /* MVI  E    */
@@ -492,12 +501,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  H    */
         case 0x24: state.h++;                      
-                   i8080_set_flags_no_cy(state.h, ((state.h & 0x0f) == 0x00));
+                   set_flags_no_cy(state.h, ((state.h & 0x0f) == 0x00));
                    break;
 
         /* DCR  H    */
         case 0x25: state.h--;                       
-                   i8080_set_flags_no_cy(state.h, !((state.h & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.h, !((state.h & 0x0f) == 0x0f));
                    break;
 
         /* MVI  H    */
@@ -520,7 +529,7 @@ int i8080_execute(unsigned char code)
                    }
 
                    /* add num to a reg */
-                   i8080_add(num);
+                   add(num);
                    state.flags.cy = carry; 
 
                    break;                            
@@ -551,12 +560,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  L    */
         case 0x2C: state.l++;                       
-                   i8080_set_flags_no_cy(state.l, ((state.l & 0x0f) == 0x00));
+                   set_flags_no_cy(state.l, ((state.l & 0x0f) == 0x00));
                    break;
 
         /* DCR  L    */
         case 0x2D: state.l--;                      
-                   i8080_set_flags_no_cy(state.l, !((state.l & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.l, !((state.l & 0x0f) == 0x0f));
                    break;
 
         /* MVI  L    */
@@ -589,14 +598,14 @@ int i8080_execute(unsigned char code)
         /* INR  M    */
         case 0x34: addr = (uint16_t) (state.h << 8) + state.l;  
                    state.memory[addr]++;
-                   i8080_set_flags_no_cy(state.memory[addr], 
+                   set_flags_no_cy(state.memory[addr], 
                                    ((state.memory[addr] & 0x0f) == 0x00));
                    break;
 
         /* DCR  M    */
         case 0x35: addr = (uint16_t) (state.h << 8) + state.l;  
                    state.memory[addr]--;
-                   i8080_set_flags_no_cy(state.memory[addr], 
+                   set_flags_no_cy(state.memory[addr], 
                                    !((state.memory[addr] & 0x0f) == 0x0f));
                    break;
 
@@ -632,12 +641,12 @@ int i8080_execute(unsigned char code)
 
         /* INR  A    */
         case 0x3C: state.a++;                      
-                   i8080_set_flags_no_cy(state.a, ((state.a & 0x0f) == 0x00));
+                   set_flags_no_cy(state.a, ((state.a & 0x0f) == 0x00));
                    break;
 
         /* DCR  A    */
         case 0x3D: state.a--;                
-                   i8080_set_flags_no_cy(state.a, !((state.a & 0x0f) == 0x0f));
+                   set_flags_no_cy(state.a, !((state.a & 0x0f) == 0x0f));
                    break;
 
         /* MVI  A   */
@@ -904,99 +913,99 @@ int i8080_execute(unsigned char code)
                    break;  
 
         /* ADD  B    */
-        case 0x80: i8080_add(state.b);
+        case 0x80: add(state.b);
                    break;   
 
         /* ADD  C    */
-        case 0x81: i8080_add(state.c);
+        case 0x81: add(state.c);
                    break;   
 
         /* ADD  D    */
-        case 0x82: i8080_add(state.d);
+        case 0x82: add(state.d);
                    break;   
 
         /* ADD  E    */
-        case 0x83: i8080_add(state.e);
+        case 0x83: add(state.e);
                    break;   
 
         /* ADD  H    */
-        case 0x84: i8080_add(state.h);
+        case 0x84: add(state.h);
                    break;   
 
         /* ADD  L    */
-        case 0x85: i8080_add(state.l);
+        case 0x85: add(state.l);
                    break;   
 
         /* ADD  M    */
-        case 0x86: i8080_add(state.memory[HL]); 
+        case 0x86: add(state.memory[HL]); 
                    break;   
 
         /* ADD  A    */
-        case 0x87: i8080_add(state.a);
+        case 0x87: add(state.a);
                    break;   
 
         /* ADC  B    */
-        case 0x88: i8080_adc(state.b); 
+        case 0x88: adc(state.b); 
                    break;   
 
         /* ADC  C    */
-        case 0x89: i8080_adc(state.c);
+        case 0x89: adc(state.c);
                    break;   
 
         /* ADC  D    */
-        case 0x8a: i8080_adc(state.d);
+        case 0x8A: adc(state.d);
                    break;   
 
         /* ADC  E    */
-        case 0x8b: i8080_adc(state.e);
+        case 0x8B: adc(state.e);
                    break;   
 
         /* ADC  H    */
-        case 0x8c: i8080_adc(state.h); 
+        case 0x8C: adc(state.h); 
                    break;   
 
         /* ADC  L    */
-        case 0x8d: i8080_adc(state.l);
+        case 0x8D: adc(state.l);
                    break;   
 
         /* ADC  M    */
-        case 0x8e: i8080_adc(state.memory[HL]);
+        case 0x8E: adc(state.memory[HL]);
                    break;   
 
         /* ADC  A    */
-        case 0x8f: i8080_adc(state.a);
+        case 0x8F: adc(state.a);
                    break;   
 
         /* SUB  B    */
-        case 0x90: i8080_sub(state.b);
+        case 0x90: sub(state.b);
                    break;   
 
         /* SUB  C    */
-        case 0x91: i8080_sub(state.c);
+        case 0x91: sub(state.c);
                    break;   
 
         /* SUB  D    */
-        case 0x92: i8080_sub(state.d);
+        case 0x92: sub(state.d);
                    break;   
 
         /* SUB  E    */
-        case 0x93: i8080_sub(state.e);
+        case 0x93: sub(state.e);
                    break;   
 
         /* SUB  H    */
-        case 0x94: i8080_sub(state.h);
+        case 0x94: sub(state.h);
                    break;   
 
         /* SUB  L    */
-        case 0x95: i8080_sub(state.l);
+        case 0x95: sub(state.l);
                    break;   
 
         /* SUB  M    */
-        case 0x96: i8080_sub(state.memory[HL]);
+        case 0x96: sub(state.memory[HL]);
                    break;   
 
         /* SUB  A    */
-        case 0x97: i8080_sub(state.a);
+        case 0x97: sub(state.a);
                    break;   
 
         /* SBB  B    */
@@ -1032,157 +1041,157 @@ int i8080_execute(unsigned char code)
                    break;   
 
         /* ANA  B    */
-        case 0xA0: i8080_ana(state.b);
+        case 0xA0: ana(state.b);
                    break;
 
         /* ANA  C    */
-        case 0xA1: i8080_ana(state.c);
+        case 0xA1: ana(state.c);
                    break;
 
         /* ANA  D    */ 
-        case 0xA2: i8080_ana(state.d);
+        case 0xA2: ana(state.d);
                    break;
 
         /* ANA  E    */
-        case 0xA3: i8080_ana(state.e);
+        case 0xA3: ana(state.e);
                    break;
 
         /* ANA  H    */
-        case 0xA4: i8080_ana(state.h);
+        case 0xA4: ana(state.h);
                    break;
 
         /* ANA  L    */
-        case 0xA5: i8080_ana(state.l);
+        case 0xA5: ana(state.l);
                    break;
 
         /* ANA  M    */
-        case 0xA6: i8080_ana(state.memory[HL]);
+        case 0xA6: ana(state.memory[HL]);
                    break;
 
         /* ANA  A    */
-        case 0xA7: i8080_ana(state.a);
+        case 0xA7: ana(state.a);
                    break;
 
         /* XRA  B    */
         case 0xA8: state.a ^= state.b;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  C    */
         case 0xA9: state.a ^= state.c;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  D    */
         case 0xAA: state.a ^= state.d;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  E    */
         case 0xAB: state.a ^= state.e;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  H    */
         case 0xAC: state.a ^= state.h;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  L    */
         case 0xAD: state.a ^= state.l;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  M    */
         case 0xAE: state.a ^= state.memory[HL];
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* XRA  A    */
         case 0xAF: state.a ^= state.a;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  B    */
         case 0xB0: state.a |= state.b;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  C    */
         case 0xB1: state.a |= state.c;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  D    */ 
         case 0xB2: state.a |= state.d;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  E    */
         case 0xB3: state.a |= state.e;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  H    */
         case 0xB4: state.a |= state.h;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  L    */
         case 0xB5: state.a |= state.l;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  M    */
         case 0xB6: state.a |= state.memory[HL];
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* ORA  A    */
         case 0xB7: state.a |= state.a;
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    break;
 
         /* CMP  B    */
-        case 0xB8: i8080_cmp(state.b);
+        case 0xB8: cmp(state.b);
                    break;
 
         /* CMP  C    */
-        case 0xB9: i8080_cmp(state.c);
+        case 0xB9: cmp(state.c);
                    break;
 
         /* CMP  D    */
-        case 0xBA: i8080_cmp(state.d);
+        case 0xBA: cmp(state.d);
                    break;
 
         /* CMP  E    */
-        case 0xBB: i8080_cmp(state.e);
+        case 0xBB: cmp(state.e);
                    break;
 
         /* CMP  H    */
-        case 0xBC: i8080_cmp(state.h);
+        case 0xBC: cmp(state.h);
                    break;
 
         /* CMP  L    */
-        case 0xBD: i8080_cmp(state.l);
+        case 0xBD: cmp(state.l);
                    break;
 
         /* CMP  M    */
-        case 0xBE: i8080_cmp(state.memory[HL]);
+        case 0xBE: cmp(state.memory[HL]);
                    break;
 
         /* CMP  A    */
-        case 0xBF: i8080_cmp(state.a);
+        case 0xBF: cmp(state.a);
                    break;
 
 
         /* RNZ       */
         case 0xC0: if (state.flags.z == 0)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* POP  B    */
-        case 0xC1: state.c = state.memory[state.sp];
+        case 0xC1: state.c = state.memory[state.sp]; 
                    state.b = state.memory[state.sp + 1];
                    state.sp += 2;
                    break;
@@ -1203,7 +1212,7 @@ int i8080_execute(unsigned char code)
 
         /* CNZ        */
         case 0xC4: if (state.flags.z == 0)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1216,22 +1225,22 @@ int i8080_execute(unsigned char code)
 
         /* ADI       */
         case 0xC6: //answer = (uint16_t) state.a + state.memory[state.pc + 1];
-                   //i8080_set_flags(answer);
+                   //set_flags(answer);
                    //state.a = (uint8_t) answer & 0xff; 
-                   i8080_add(state.memory[state.pc + 1]);
+                   add(state.memory[state.pc + 1]);
                    b = 2;
                    break;
 
         /* RST  0    */
-        case 0xC7: return i8080_intr(0x0008 * 0);
+        case 0xC7: return intr(0x0008 * 0);
                   
         /* RZ        */
         case 0xC8: if (state.flags.z)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* RET       */
-        case 0xC9: return i8080_ret();
+        case 0xC9: return ret();
 
         /* JZ        */
         case 0xCA: if (state.flags.z)
@@ -1245,30 +1254,30 @@ int i8080_execute(unsigned char code)
         
         /* CZ        */
         case 0xCC: if (state.flags.z)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
  
         /* CALL addr */
-        case 0xCD: return i8080_call(ADDR);
+        case 0xCD: return call(ADDR);
 
         /* ACI       */
         case 0xCE: // answer = (uint16_t) state.a + 
                    //         state.memory[state.pc + 1] +
                    //         state.flags.cy;
-                   // i8080_set_flags(answer);
+                   // set_flags(answer);
                    // state.a = (uint8_t) answer & 0xff;
-                   i8080_adc(state.memory[state.pc + 1]);
+                   adc(state.memory[state.pc + 1]);
                    b = 2;
                    break;
 
         /* RST  1    */
-        case 0xCF: return i8080_intr(0x0008 * 1);
+        case 0xCF: return intr(0x0008 * 1);
                   
         /* RNC       */
         case 0xD0: if (state.flags.cy == 0)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* POP  D    */
@@ -1293,7 +1302,7 @@ int i8080_execute(unsigned char code)
 
         /* CNC        */
         case 0xD4: if (state.flags.cy == 0)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1306,18 +1315,18 @@ int i8080_execute(unsigned char code)
 
         /* SUI       */
         case 0xD6: //answer = (uint16_t) state.a - state.memory[state.pc + 1];
-                   //i8080_set_flags(answer);
+                   //set_flags(answer);
                    //state.a = (uint8_t) answer & 0xff;
-                   i8080_sub(state.memory[state.pc + 1]);
+                   sub(state.memory[state.pc + 1]);
                    b = 2;
                    break;
 
         /* RST  2    */
-        case 0xD7: return i8080_intr(0x0008 * 2);
+        case 0xD7: return intr(0x0008 * 2);
 
         /* RC        */
         case 0xD8: if (state.flags.cy)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* NOP       */
@@ -1339,7 +1348,7 @@ int i8080_execute(unsigned char code)
 
         /* CC        */
         case 0xDC: if (state.flags.cy)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1348,7 +1357,7 @@ int i8080_execute(unsigned char code)
         case 0xDE: //answer = (uint16_t) state.a -
                    //         state.memory[state.pc + 1] -
                    //         state.flags.cy;
-                   //i8080_set_flags(answer);
+                   //set_flags(answer);
                    //state.a = (uint8_t) answer & 0xff;
                    sbb(state.memory[state.pc + 1]);
                    b = 2;
@@ -1356,7 +1365,7 @@ int i8080_execute(unsigned char code)
 
         /* RPO       */
         case 0xE0: if (state.flags.p == 0)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* POP  H    */
@@ -1386,7 +1395,7 @@ int i8080_execute(unsigned char code)
 
         /* CPO       */
         case 0xE4: if (state.flags.p == 0)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1398,13 +1407,13 @@ int i8080_execute(unsigned char code)
                    break;
 
         /* ANI       */
-        case 0xE6: i8080_ana(state.memory[state.pc + 1]);
+        case 0xE6: ana(state.memory[state.pc + 1]);
                    b = 2;                      
                    break;
 
         /* RPE       */
         case 0xE8: if (state.flags.p)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* PCHL      */
@@ -1433,26 +1442,26 @@ int i8080_execute(unsigned char code)
 
         /* CPE       */
         case 0xEC: if (state.flags.p)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
 
         /* XRI       */
         case 0xEE: //answer = (uint16_t) state.a ^ state.memory[state.pc + 1];
-                   //i8080_set_flags(answer);
+                   //set_flags(answer);
                    //state.a = (uint8_t) answer;
                    state.a ^= state.memory[state.pc + 1];
-                   i8080_set_flags_new((uint16_t) state.a, 0);
+                   set_flags_ac((uint16_t) state.a, 0);
                    b = 2;
                    break;
 
         /* RST  5    */
-        case 0xEF: return i8080_intr(0x0008 * 5);
+        case 0xEF: return intr(0x0008 * 5);
                   
         /* RP        */
         case 0xF0: if (state.flags.s == 0)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* POP  PSW  */
@@ -1484,7 +1493,7 @@ int i8080_execute(unsigned char code)
  
         /* CP        */
         case 0xF4: if (state.flags.p)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1498,17 +1507,17 @@ int i8080_execute(unsigned char code)
 
         /* ORI       */
         case 0xF6: answer = (uint16_t) state.a | state.memory[state.pc + 1];
-                   i8080_set_flags_new(answer, 0);
+                   set_flags_ac(answer, 0);
                    state.a = (uint8_t) answer;
                    b = 2;
                    break;
 
         /* RST  6    */
-        case 0xF7: return i8080_intr(0x0008 * 6);
+        case 0xF7: return intr(0x0008 * 6);
                   
         /* RM        */
         case 0xF8: if (state.flags.s)
-                       return i8080_ret();
+                       return ret();
                    break;
 
         /* SPHL     */
@@ -1531,7 +1540,7 @@ int i8080_execute(unsigned char code)
 
         /* CM        */
         case 0xFC: if (state.flags.s)
-                       return i8080_call(ADDR);
+                       return call(ADDR);
 
                    b = 3;
                    break;
@@ -1540,12 +1549,12 @@ int i8080_execute(unsigned char code)
         case 0xFD: b = 3; break;
 
         /* CPI      */
-        case 0xFE: i8080_cmp(state.memory[state.pc + 1]);
+        case 0xFE: cmp(state.memory[state.pc + 1]);
                    b = 2;                      
                    break;
 
         /* RST  7    */
-        case 0xFF: return i8080_intr(0x0008 * 7);
+        case 0xFF: return intr(0x0008 * 7);
                   
         default:
             printf("UNKNOWN OP CODE: %02x\n", code);
@@ -1882,7 +1891,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xD6: printf("SUI  #%02x", codebuffer[pc + 1]); 
                    b = 2;                      /* a <- a - data    */
                    break;        
-        case 0xD7: printf("RST  2"); break;    /* i8080_call $10         */
+        case 0xD7: printf("RST  2"); break;    /* call $10         */
         case 0xD8: printf("RC"); break;        /* if CY,RET        */
         case 0xDA: printf("JC   $%02x%02x", codebuffer[pc + 2],
                                             codebuffer[pc + 1]);
@@ -1898,7 +1907,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xDE: printf("SBI  #%02x", codebuffer[pc + 1]);
                    b = 2;                      /* a <- a-data-CY   */
                    break;
-        case 0xDF: printf("RST  3"); break;    /* i8080_call $18         */
+        case 0xDF: printf("RST  3"); break;    /* call $18         */
         case 0xE0: printf("RPO"); break;       /* if PO, RET       */
         case 0xE1: printf("POP  H"); break;    /* l <- *(sp)       */
                                                /* h <- *(sp+1)     */ 
@@ -1918,7 +1927,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xE6: printf("ANI  #%02x", codebuffer[pc + 1]);
                    b = 2;                      /* a <- a & data    */
                    break;
-        case 0xE7: printf("RST  4"); break;    /* i8080_call $20         */
+        case 0xE7: printf("RST  4"); break;    /* call $20         */
         case 0xE8: printf("RPE"); break;       /* if PE,RET        */
         case 0xE9: printf("PCHL"); break;      /* PC.hi <- h; PC.lo <- l */
         case 0xEA: printf("JPE  $%02x%02x", codebuffer[pc + 2],
@@ -1933,7 +1942,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xEE: printf("XRI  #%02x", codebuffer[pc + 1]);
                    b = 2;                      /* a <- a ^ data    */
                    break;
-        case 0xEF: printf("RST  5"); break;    /* i8080_call $28         */
+        case 0xEF: printf("RST  5"); break;    /* call $28         */
 
         case 0xF0: printf("RP"); break;        /* if P, RET        */
         case 0xF1: printf("POP  PSW"); break;  /* flags <- *(sp)   */
@@ -1954,7 +1963,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xF6: printf("ORI  #%02x", codebuffer[pc + 1]);
                    b = 2;                      /* a <- a | data    */
                    break;
-        case 0xF7: printf("RST  6"); break;    /* i8080_call $30         */
+        case 0xF7: printf("RST  6"); break;    /* call $30         */
         case 0xF8: printf("RM"); break;        /* if M,RET         */
         case 0xF9: printf("SPHL"); break;      /* sp <- hl         */
         case 0xFA: printf("JM   $%02x%02x", codebuffer[pc + 2],
@@ -1970,7 +1979,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
         case 0xFE: printf("CPI  #%02x", codebuffer[pc + 1]);
                    b = 2;                      /* a - data         */
                    break;
-        case 0xFF: printf("RST  7"); break;    /* i8080_call $38         */
+        case 0xFF: printf("RST  7"); break;    /* call $38         */
 
         default:
             printf("UNKNOWN: %02x", code);
@@ -1982,7 +1991,7 @@ int i8080_disassemble(unsigned char *codebuffer, int pc)
 }
 
 /* init registers, flags and state.memory of intel 8080 system */
-i8080_state_t *i8080_init(void)
+i8080_state_t *i8080_init(char a)
 {
     /* wipe all the structs */
     bzero(&state, sizeof(i8080_state_t));
@@ -1993,7 +2002,7 @@ i8080_state_t *i8080_init(void)
     state.flags.u5 = 0;
 
     /* setup parity array */
-    i8080_calc_parity_array();
+    calc_parity_array();
 
     return &state;
 }
