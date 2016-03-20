@@ -19,12 +19,13 @@
 
 #include <stdio.h>
 #include "system/cpudiag.h"
+#include "system/gameboy.h"
 #include "system/exercize.h"
 #include "system/exercize_z80.h"
 #include "system/space_invaders.h"
 
 /* rom memory segment */
-uint8_t rom[65536];
+uint8_t rom[2 << 24];
 
 int main(int argc, char **argv)
 {
@@ -37,7 +38,7 @@ int main(int argc, char **argv)
     }
 
     /* load ROM in memory */
-    size_t sz = fread(rom, 1, 65536, f);
+    size_t sz = fread(rom, 1, (2 << 24), f);
 
     /* check for errors   */
     if (sz < 1)
@@ -64,7 +65,7 @@ int main(int argc, char **argv)
     else if (sz == 8704)
         exercize_z80_start(rom, sz);
     else
-        printf("unknown ROM\n");
+        gameboy_start(rom, sz);
 
     return 0;
 }

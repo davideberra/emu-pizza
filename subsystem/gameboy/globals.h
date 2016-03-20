@@ -21,5 +21,7 @@
 #define __GLOBALS__
 
 static char quit = 0;
+static char gpu_window = 1;
+static char log_active = 0;
 
 #endif

@@ -22,7 +22,6 @@
 
 #include "subsystem/gameboy/cycles_hdr.h"
 #include "subsystem/gameboy/gpu_hdr.h"
-// #include "subsystem/gameboy/timer_hdr.h"
 #include "subsystem/gameboy/input_hdr.h"
 #include "subsystem/gameboy/mmu_hdr.h"
 
@@ -49,17 +48,50 @@ uint8_t carttype;
 /* system memory (!= cartridge memory) */
 uint8_t memory[65536];
 
+/* cartridge memory (max 2MB) */
+uint8_t cart_memory[2 << 21];
+
+/* RAM memory area */
+uint8_t *ram;
+
+/* current bank in case of MBC controller */
+uint8_t rom_current_bank = 1;
+uint8_t ram_current_bank = 1;
+
+/* banking mode - 0 ROM, 1 RAM */
+uint8_t banking = 0;
 
 /* init (alloc) system state.memory */
 void static mmu_init(uint8_t c)
 {
+    rom_current_bank = 0x01;
+    ram_current_bank = 0x01;
+
     carttype = c;
+}
+
+/* init (alloc) system state.memory */
+void static mmu_init_ram(uint32_t c)
+{
+    ram = malloc(c);
+
+    bzero(ram, c);
 }
 
 /* load data in a certain address */
 void static mmu_load(uint8_t *data, size_t sz, uint16_t a)
 {
     memcpy(&memory[a], data, sz);
+}
+
+/* load full cartridge */
+void static mmu_load_cartridge(uint8_t *data, size_t sz)
+{
+    /* copy max 32k into working memory */
+    memcpy(memory, data, 2 << 14);
+
+    /* copy full cartridge */
+    memcpy(cart_memory, data, sz);
 }
 
 /* move 8 bit from s to d */
@@ -101,6 +133,12 @@ uint8_t static __always_inline mmu_read(uint16_t a)
     return memory[a];
 }
 
+/* write 16 bit block on a memory address (no cycles affected) */
+void static __always_inline mmu_write_no_cyc(uint16_t a, uint8_t v)
+{
+    memory[a] = v;
+}
+
 /* write 16 bit block on a memory address */
 void static __always_inline mmu_write(uint16_t a, uint8_t v)
 {
@@ -110,7 +148,74 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     /* wanna write on ROM? */
     if (a < 0x8000)
     {
+        /* return in case of ONLY ROM */
+        if (carttype == 0)
+            return;
+
         /* TODO - MBC strategies */
+
+        switch (carttype)
+        {
+            /* MBC1 */
+            case 0x01: 
+            case 0x02:  
+            case 0x03: 
+                       if (a >= 0x2000 && a <= 0x3FFF) 
+                       {
+                           /* reset 5 bits */
+                           uint8_t b = rom_current_bank & 0xE0;
+
+                           /* set them with new value */
+                           b |= v;
+ 
+                           if (b != rom_current_bank)
+                           {
+                                /* copy! */
+                                memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+                           }
+                          
+                           rom_current_bank = b;
+                       }
+                       else if (a >= 0x4000 && a <= 0x5FFF)
+                       {
+
+                           /* ROM banking? it's about 2 higher bits */
+                           if (banking == 0)
+                           {
+                               /* reset 5 bits */
+                               uint8_t b = rom_current_bank & 0x1F;
+
+                               /* set them with new value */
+                               b |= (v << 5);
+
+                               if (b != rom_current_bank)
+                               {
+                                   /* copy! */
+                                   memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+                               }
+
+                               rom_current_bank = b;
+                           }
+                           else
+                           {
+                               /* save current bank */
+                               memcpy(&ram[0x2000 * ram_current_bank], 
+                                      &memory[0xA000], 0x2000);
+
+                               ram_current_bank = v;
+
+                               /* move new ram bank */
+                               memcpy(&memory[0xA000], &ram[0x2000 * ram_current_bank], 
+                                      0x2000);
+                           }
+                       }
+                       else if (a >= 0x6000 && a <= 0x7FFF)
+                       {
+                           banking = v;
+                       }
+
+        }
+
         return; 
     }
 
@@ -165,19 +270,17 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         gpu_state.obj_palette_1[3] = gpu_color_lookup[(v & 0xc0) >> 6];
     }
 
-/*
     if (a == 0xFF40)
     {
-            printf("BG: %d - Sprites: %d - Sp Size: %d - BG Tile Map: %d\n",
+/*            printf("BG: %d - Sprites: %d - Sp Size: %d - BG Tile Map: %d\n",
                    (*gpu_state.lcd_ctrl).bg, (*gpu_state.lcd_ctrl).sprites,
                    (*gpu_state.lcd_ctrl).sprites_size,
                    (*gpu_state.lcd_ctrl).bg_tiles_map);
 
             printf("BG TILES: %d - Window: %d - Window tile: %d - Display: %d\n",
                    (*gpu_state.lcd_ctrl).bg_tiles, (*gpu_state.lcd_ctrl).window,
-                   (*gpu_state.lcd_ctrl).window_tile_map, (*gpu_state.lcd_ctrl).display);
+                   (*gpu_state.lcd_ctrl).window_tiles_map, (*gpu_state.lcd_ctrl).display); */
     }
-*/
 }
 
 /* read 16 bit data from a memory addres */

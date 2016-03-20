@@ -75,38 +75,6 @@ uint8_t bios[] = {
 /* SDL keyboard state reference  */
 const Uint8 *kb_state; 
 
-/* set this to 1 if want to stop execution */
-// static char quit = 0;
-
-// static uint16_t latest_interrupt = 0xD7;
-
-/* timer handler semaphore */
-// static char timer_sem = 0;
-// static char timer_triggered = 0;
-
-
-/* callback for timer events (120 timer per second) */
-/*void gameboy_timer_handler(int sig, siginfo_t *si, void *uc)
-{
-    timer_triggered = 1;
-}*/
-
-/* video interrupt */
-/*void gameboy_video_interrupt()
-{
- 
-    uint8_t ln = mmu_read_no_cyc(0xFF44);
-
-    printf("LINE PRIMA: %02x\n", ln);
-
-    ln = (ln + 1) % 154;
-
-    printf("LINE DOPO: %02x\n", ln);
-
-    mmu_write(0xFF44, ln);
-
-    printf("TEST: %02x\n", mmu_read_no_cyc(0xFF44));
-}*/
 
 /* Gameboy Z80 DAA instruction */
 void static __always_inline gameboy_z80_daa()
@@ -141,9 +109,6 @@ void static __always_inline gameboy_z80_daa()
 
     state.flags.ac = 0;
     state.flags.z = (state.a == 0);
-
-    /* and its flags */
-//    z80_set_flags_sz53p(state.a);
 
     return;
 }
@@ -252,31 +217,10 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.t = 4;
                    break;
 
-        /* ADI       */
-/*        case 0xC6: z80_add(mmu_read(state.pc + 1));
-                   state.flags.ac = 0;
-                   state.t = 7;
-                   b = 2;
-                   break;
-*/
-        /* ACI       */
-/*        case 0xCE: z80_adc(mmu_read(state.pc + 1));
-                   state.flags.ac = 0;
-                   b = 2;
-                   state.t = 7;
-                   break;
-*/
         /* ERASED           */
         case 0xD3: printf("?????\n");
                    break;
 
-        /* SUI       */
-/*        case 0xD6: z80_sub(mmu_read(state.pc + 1));
-                   state.flags.ac = 0;
-                   state.t = 7;
-                   b = 2;
-                   break;
-*/
         /* RETI            */
         case 0xD9: state.int_enable = 1;
                    state.t = 16;
@@ -346,13 +290,6 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         /* REMOVED        */
         case 0xF4: printf("EEEEEEEEEEEEEE?\n"); exit(1);
                    break;
-
-        /* PUSH PSW  */
-/*        case 0xF5: mmu_write(state.sp - 1, state.a);
-                   mmu_write(state.sp - 2, *state.f);
-                   state.sp -= 2;
-                   state.t = 11;
-                   break; */
 
         /* LD  HL,SP+dd   */
         case 0xF8: // *state.hl = state.sp + ((char) mmu_read(state.pc + 1));
@@ -486,10 +423,7 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 void gameboy_start(uint8_t *rom, size_t size)
 {
     uint8_t  op;
-    //struct itimerspec timer;
-    //struct sigevent   te;
-    //struct sigaction  sa;
-    //timer_t           timer_id = 0;
+    uint8_t  byte;
 
     /* init z80 */
     z80_init(); 
@@ -513,11 +447,43 @@ void gameboy_start(uint8_t *rom, size_t size)
     /* init MMU */
     mmu_init(mbc);
 
+    /* get ROM banks */
+    byte = rom[0x148];
+
+    printf("ROM: ");
+
+    switch (byte)
+    {
+        case 0x00: printf("0 banks\n"); break;
+        case 0x01: printf("4 banks\n"); break;
+        case 0x02: printf("8 banks\n"); break;
+        case 0x03: printf("16 banks\n"); break;
+        case 0x04: printf("32 banks\n"); break;
+        case 0x05: printf("64 banks\n"); break;
+        case 0x06: printf("128 banks\n"); break;
+        case 0x07: printf("256 banks\n"); break;
+    }
+
+    /* get RAM banks */
+    byte = rom[0x149];
+
+    printf("RAM: ");
+
+    switch (byte)
+    {
+        case 0x00: printf("NO RAM\n"); break;
+        case 0x01: printf("2 kB\n"); break;
+        case 0x02: printf("8 kB\n"); break;
+        case 0x03: mmu_init_ram(2 << 15); printf("32 kB\n"); break;
+        case 0x04: printf("128 kB\n"); break;
+        case 0x05: printf("64 kB\n"); break;
+    }
+
     /* load BIOS at 0x0000 address of system memory */
     mmu_load(bios, 0x100, 0x0000);
 
     /* load ROM at 0x0100 address of system memory */
-    mmu_load(&rom[0x0100], size - 0x100, 0x0100);
+    mmu_load(&rom[0x0100], 0x100, 0x0100);
 
     /* reset SP */
     state.sp = 0x0000;
@@ -581,48 +547,48 @@ void gameboy_start(uint8_t *rom, size_t size)
         if (gameboy_z80_execute(op) != 0)
             z80_execute(op);
 
-//        if (state.int_enable)
-//            printf("ABILITATO =O\n");
-
-        /* update GPU state */
-//        gpu_step(state.t, state.int_enable);
-
-        /* update timer state */
-//        timer_step(state.t, state.int_enable);
-
         /* keep low bits always set to zero */
         *state.f &= 0xf0;
-
-
-     /*   if (state.int_enable)
-        {
-            if ((*int_e & *int_f) != 0)
-            {
-                printf("INT ENABLE UUUUUUUUUU: %02X\n", *int_e);
-                sleep(4);
-            } 
-        } */
-
     }
 
     printf("BIOS LOADED\n");
 
-    /* restore correct status */
-/*    state.a = 0x11;
-    mmu_write(0xFFFE, 0x0B);
-
-    mmu_write(0xFF83, 0x66);
-    mmu_write(0xFF82, 0x66);
-    mmu_write(0xFF81, 0xed);
-    mmu_write(0xFF80, 0xce);
-    mmu_write(0xFF44, mmu_read(0xFF44) - 2);
-    mmu_write(0xDFFF, 0xff); */
-
     /* load FULL ROM at 0x0000 address of system memory */
-    mmu_load(rom, 0x100, 0x0000);
+    mmu_load_cartridge(rom, size);
 
-
-
+    /* reset to default values */
+    mmu_write_no_cyc(0xFF05, 0x00);
+    mmu_write_no_cyc(0xFF06, 0x00); 
+    mmu_write_no_cyc(0xFF07, 0x00);
+    mmu_write_no_cyc(0xFF10, 0x80); 
+    mmu_write_no_cyc(0xFF11, 0xBF); 
+    mmu_write_no_cyc(0xFF12, 0xF3); 
+    mmu_write_no_cyc(0xFF14, 0xBF);
+    mmu_write_no_cyc(0xFF16, 0x3F);
+    mmu_write_no_cyc(0xFF17, 0x00); 
+    mmu_write_no_cyc(0xFF19, 0xBF); 
+    mmu_write_no_cyc(0xFF1A, 0x7F); 
+    mmu_write_no_cyc(0xFF1B, 0xFF);
+    mmu_write_no_cyc(0xFF1C, 0x9F); 
+    mmu_write_no_cyc(0xFF1E, 0xBF);
+    mmu_write_no_cyc(0xFF20, 0xFF); 
+    mmu_write_no_cyc(0xFF21, 0x00);
+    mmu_write_no_cyc(0xFF22, 0x00); 
+    mmu_write_no_cyc(0xFF23, 0xBF); 
+    mmu_write_no_cyc(0xFF24, 0x77);
+    mmu_write_no_cyc(0xFF25, 0xF3); 
+    mmu_write_no_cyc(0xFF26, 0xF1);
+    mmu_write_no_cyc(0xFF40, 0x91);
+    mmu_write_no_cyc(0xFF42, 0x00);
+    mmu_write_no_cyc(0xFF43, 0x00);  
+    mmu_write_no_cyc(0xFF45, 0x00); 
+    mmu_write_no_cyc(0xFF47, 0xFC); 
+    mmu_write_no_cyc(0xFF48, 0xFF); 
+    mmu_write_no_cyc(0xFF49, 0xFF); 
+    mmu_write_no_cyc(0xFF4A, 0x00); 
+    mmu_write_no_cyc(0xFF4B, 0x00); 
+    mmu_write_no_cyc(0xFFFF, 0x00);  
+ 
    // uint64_t r = 0;
 
    // uint8_t *tmr = mmu_addr(0xFF05);
@@ -639,17 +605,13 @@ void gameboy_start(uint8_t *rom, size_t size)
 /*    for (i=0;i<spaces;i++)
         printf(" "); */
 
-/* printf("OP: %02x:%02x:%02x F: %02x PC: %04x SP: %04x St: %02x:%02x:%02x:%02x ",
-        r, op, mmu_read_no_cyc(state.pc + 1), mmu_read_no_cyc(state.pc + 2),
-        *state.f, z80_state->pc, state.sp,
-        mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1),
-        mmu_read_no_cyc(state.sp + 2), mmu_read_no_cyc(state.sp + 3)); */
-
- /*printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
+/*
+ printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x TIMER: %03d SUB: %03d\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xFF05), timer.sub);
+ printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xFF40));
 */
+
 // printf("HL: %04x CYC: %" PRId64 " TIMER: %03d SUB: %03d DIVSUB: %03d\n", *state.hl, state.cycles, *tmr, timer.sub, timer.div_sub);
        
     /*r++;
@@ -664,33 +626,21 @@ void gameboy_start(uint8_t *rom, size_t size)
         /* keep low bits always set to zero */
         *state.f &= 0xf0;
 
+        if (state.int_enable)
+        {
+            // printf("IN ATTESA DI STI INTERRUPT: %02x\n", *int_e);
 
-		
-/*
-        if (state.pc == 0x0033)
-        {
-            spaces -= 2;
-            spaces_changed =1;
-        }
-*/
-/*        if (state.int_enable)
-        {
-            if ((*int_e & 0x08) != 0)
+/*            if ((*int_e & 0x08) != 0)
             {
                 printf("MI INTERESSA SAPERE DEL SERIAL IO - ENABLE: %d \n", state.int_enable);
-            }
+            }*/
 
-            if ((*int_e & 0x08) != 0)
-            {
-                printf("MI INTERESSA SAPERE DEL SERIAL IO - ENABLE: %d \n", state.int_enable);
-            }
-
-            if ((*int_e & 0x02) != 0)
+/*            if ((*int_e & 0x02) != 0)
             {
                 printf("mi interessa sapere del lcd\n");
-                // sleep(4);
-            }
-        }*/
+                sleep(4);
+            } */
+        }
 
         /* interrupts filtered by enable flags */
         uint8_t int_r = (*int_f & *int_e);
@@ -706,7 +656,7 @@ void gameboy_start(uint8_t *rom, size_t size)
                 continue;
             }
 
-			/* reset int-enable flag, it will be restored after a RETI op */
+            /* reset int-enable flag, it will be restored after a RETI op */
             state.int_enable = 0;
 
             /* Vblank interrupt triggers RST 5 */
@@ -715,18 +665,41 @@ void gameboy_start(uint8_t *rom, size_t size)
                 /* reset flag */
                 *int_f &= 0xFE;
 
-				/* handle the interrupt */
+                /* handle the interrupt */
                 z80_intr(0x0040); 
             }
+            else if ((int_r & 0x02) == 0x02)
+            {
+                /* LCD Stat interrupt */
+
+                /* reset flag */
+                *int_f &= 0xFD;
+
+                /* handle the interrupt! */
+                z80_intr(0x0048); 
+            }       
             else if ((int_r & 0x04) == 0x04)
             {
                 /* reset flag */
                 *int_f &= 0xFB;
 
-				/* handle the interrupt! */
+                /* handle the interrupt! */
                 z80_intr(0x0050); 
             }       
         }
+
+        /* aaaaaaaaaaaaaand finally, check for SDL events */
+        SDL_Event e;
+
+        while (SDL_PollEvent(&e))
+        {
+            switch (e.type)
+            {
+                case SDL_QUIT:
+                    quit = 1;
+                    break;
+            }
+        } 
     }
 
     return; 

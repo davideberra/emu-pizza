@@ -26,6 +26,7 @@
 void static __always_inline          *mmu_addr(uint16_t a);
 uint8_t static __always_inline        mmu_read_no_cyc(uint16_t a);
 uint8_t static __always_inline        mmu_read(uint16_t a);
+void static __always_inline           mmu_write_no_cyc(uint16_t a, uint8_t v);
 void static __always_inline           mmu_write(uint16_t a, uint8_t v);
 unsigned int static __always_inline   mmu_read_16(uint16_t a);
 void static __always_inline           mmu_write_16(uint16_t a, uint16_t v);
