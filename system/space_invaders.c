@@ -218,7 +218,7 @@ void space_invaders_video_interrupt()
             i = ((y * 256) + x) / 8;
 
             /* get byte from video RAM of the game */
-            b = z80_state->memory[0x2400 + i];
+            b = mmu_read(0x2400 + i);
 
             /* calc base index of SDL pixels buffer */
             i = (((255 - x) * 224) + y);
@@ -291,7 +291,8 @@ void space_invaders_start(uint8_t *rom, size_t size)
     z80_state = z80_init(); 
 
     /* load ROM at 0x0000 address of system memory */
-    memcpy(z80_state->memory, rom, size);
+    mmu_load(rom, size, 0x0000);
+    //memcpy(z80_state->memory, rom, size);
 
     /* prepare timer to emulate video refresh interrupts */
     sa.sa_flags = SA_SIGINFO;
@@ -320,18 +321,18 @@ void space_invaders_start(uint8_t *rom, size_t size)
     while (!quit)
     {
         /* get op */
-        op   = z80_state->memory[z80_state->pc];
+        op   = mmu_read(z80_state->pc);
 
         /* create a branch for every OP to override */
         switch (op)
         {
             /* IN     */
-            case 0xDB: port = z80_state->memory[z80_state->pc + 1];
+            case 0xDB: port = mmu_read(z80_state->pc + 1);
                        space_invaders_in(port);
                        break;
 
             /* OUT    */
-            case 0xD3: port  = z80_state->memory[z80_state->pc + 1];
+            case 0xD3: port  = mmu_read(z80_state->pc + 1);
                        space_invaders_out(port);
                        break;
         }
