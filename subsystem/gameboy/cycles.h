@@ -21,6 +21,7 @@
 #define __CYCLES__
 
 #include "subsystem/gameboy/gpu_hdr.h"
+#include "subsystem/gameboy/serial_hdr.h"
 #include "subsystem/gameboy/timer_hdr.h"
 
 void static __always_inline cycles_step(uint8_t s)
@@ -30,6 +31,9 @@ void static __always_inline cycles_step(uint8_t s)
 
     /* update timer state */
     timer_step(s);
+
+    /* update serial state */
+    serial_step(s);
 }
 
 #endif

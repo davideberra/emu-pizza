@@ -78,7 +78,7 @@ typedef struct gpu_s
     uint32_t  obj_palette_1[4]; 
 
     /* frame buffer     */
-    uint32_t  frame_buffer[65536];
+    uint32_t  frame_buffer[160 * 144];
 
 } gpu_t;
 

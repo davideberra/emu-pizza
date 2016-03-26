@@ -22,9 +22,10 @@
 
 #include "subsystem/gameboy/cycles_hdr.h"
 #include "subsystem/gameboy/gpu_hdr.h"
+#include "subsystem/gameboy/interrupts_hdr.h"
 #include "subsystem/gameboy/input_hdr.h"
 #include "subsystem/gameboy/mmu_hdr.h"
-
+#include <stdlib.h>
 
 /* GAMEBOY MEMORY AREAS 
 
@@ -128,7 +129,9 @@ uint8_t static __always_inline mmu_read(uint16_t a)
 
     /* RAM mirror */
     if (a >= 0xE000 && a <= 0xFDFF)
+    {
         return memory[a - 0x2000];
+    }
 
     return memory[a];
 }
@@ -178,7 +181,6 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                        }
                        else if (a >= 0x4000 && a <= 0x5FFF)
                        {
-
                            /* ROM banking? it's about 2 higher bits */
                            if (banking == 0)
                            {
@@ -219,8 +221,10 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return; 
     }
 
-/*    if (a >= 0xE000 && a <= 0xFDFF)
+/*
+    if (a >= 0xE000 && a <= 0xFDFF)
     {
+        printf("ECHOOOOOOOOOOOOOO WRITE\n");
         memory[a - 0x2000] = v;
         return;
     } */
@@ -231,6 +235,16 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         memory[a] = 0x00;
         return;
     }
+
+    /* wanna write on serial port? */
+/*    if (a == 0xFF02)
+    {
+        printf("SERIAL SCRIVO SU FF02 %02X\n", v);
+
+        memory[0xff02] = v;
+
+        return;
+    }*/
 
     /* update cycles AFTER memory set */
     cycles_step(4);

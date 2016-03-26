@@ -28,6 +28,7 @@
 #include "subsystem/gameboy/gpu.h"
 #include "subsystem/gameboy/globals.h"
 #include "subsystem/gameboy/input.h"
+#include "subsystem/gameboy/serial.h"
 #include "cpu/z80_gameboy_regs.h"
 // #include "cpu/z80_gameboy_mmu.h"
 #include "cpu/z80.h"
@@ -508,32 +509,20 @@ void gameboy_start(uint8_t *rom, size_t size)
         return;
     bzero(&te, sizeof(struct sigevent)); */
 
-    /* set and enable alarm */
-/*    te.sigev_notify = SIGEV_SIGNAL;
-    te.sigev_signo = SIGRTMIN;
-    te.sigev_value.sival_ptr = &timer_id; 
-    timer_create(CLOCK_REALTIME, &te, &timer_id); */
-
-    /* initialize 120 hits per seconds timer (twice per drawn frame) */
-/*    timer.it_value.tv_sec = 1;
-    timer.it_value.tv_nsec = 0;
-    timer.it_interval.tv_sec = 0;
-    timer.it_interval.tv_nsec = 1000000000 / 30; */
-    
-    /* start timer */
-//    timer_settime(timer_id, 0, &timer, NULL);
-
     /* init GPU */
     gpu_init();
 
     /* init timer */
     timer_init();
 
+    /* init serial */
+    serial_init();
+
     /* get interrupt flags and interrupt enables */
     uint8_t *int_e;
     uint8_t *int_f;
 
-	/* pointers to memory location of interrupt enables/flags */
+    /* pointers to memory location of interrupt enables/flags */
     int_e = mmu_addr(0xFFFF);
     int_f = mmu_addr(0xFF0F);
 
@@ -589,10 +578,6 @@ void gameboy_start(uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF4B, 0x00); 
     mmu_write_no_cyc(0xFFFF, 0x00);  
  
-   // uint64_t r = 0;
-
-   // uint8_t *tmr = mmu_addr(0xFF05);
-
     /* running stuff! */
     while (!quit)
     {
@@ -609,11 +594,8 @@ void gameboy_start(uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xFF40));
-*/
-
-// printf("HL: %04x CYC: %" PRId64 " TIMER: %03d SUB: %03d DIVSUB: %03d\n", *state.hl, state.cycles, *tmr, timer.sub, timer.div_sub);
-       
+ printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xC22B));
+  */     
     /*r++;
     spaces_changed = 0;
 }*/
@@ -626,22 +608,6 @@ void gameboy_start(uint8_t *rom, size_t size)
         /* keep low bits always set to zero */
         *state.f &= 0xf0;
 
-        if (state.int_enable)
-        {
-            // printf("IN ATTESA DI STI INTERRUPT: %02x\n", *int_e);
-
-/*            if ((*int_e & 0x08) != 0)
-            {
-                printf("MI INTERESSA SAPERE DEL SERIAL IO - ENABLE: %d \n", state.int_enable);
-            }*/
-
-/*            if ((*int_e & 0x02) != 0)
-            {
-                printf("mi interessa sapere del lcd\n");
-                sleep(4);
-            } */
-        }
-
         /* interrupts filtered by enable flags */
         uint8_t int_r = (*int_f & *int_e);
 
@@ -653,15 +619,18 @@ void gameboy_start(uint8_t *rom, size_t size)
             if (op == 0x76)
             {
                 state.pc++;
-                continue;
+
+                if (state.int_enable == 0)
+                    continue;
             }
 
             /* reset int-enable flag, it will be restored after a RETI op */
             state.int_enable = 0;
 
-            /* Vblank interrupt triggers RST 5 */
             if ((int_r & 0x01) == 0x01)
             {
+                /* vblank interrupt triggers RST 5 */
+
                 /* reset flag */
                 *int_f &= 0xFE;
 
@@ -680,12 +649,24 @@ void gameboy_start(uint8_t *rom, size_t size)
             }       
             else if ((int_r & 0x04) == 0x04)
             {
+                /* timer interrupt */
+
                 /* reset flag */
                 *int_f &= 0xFB;
 
                 /* handle the interrupt! */
                 z80_intr(0x0050); 
-            }       
+            } 
+            else if ((int_r & 0x08) == 0x08)
+            {
+                /* serial interrupt */
+
+                /* reset flag */
+                *int_f &= 0xF7;
+
+                /* handle the interrupt! */
+                z80_intr(0x0058); 
+            } 
         }
 
         /* aaaaaaaaaaaaaand finally, check for SDL events */

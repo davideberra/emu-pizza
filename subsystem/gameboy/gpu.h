@@ -48,7 +48,6 @@ static SDL_Window *window = NULL;
 
 /* surface contained by the window */
 static SDL_Surface *screenSurface = NULL;
-// static SDL_Surface *windowSurface = NULL;
 
 /* pointer to interrupt flags (handy) */
 interrupts_flags_t *gpu_if;
@@ -144,18 +143,40 @@ void static gpu_init()
 /* push frame on screen */
 void static gpu_draw_frame()
 {
-    uint16_t i, j, x, sx, y, sy;
+    uint16_t i, x, sx, y, sy;
 
     uint32_t *pixel = screenSurface->pixels;
 
+    memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+
+    /* Update the surface */
+    SDL_UpdateWindowSurface(window);
+
+    /* wait for 60hz clock */
+    if (gpu_timer_triggered == 0)
+        sem_wait(&gpu_sem);
+
+    gpu_timer_triggered = 0;
+
+    fn++;
+
+//    printf("DISEGNATO FRAME\n");
+
+    return;
+
+
     for (i=0; i<144; i++)
     {
-        y = (*(gpu_state.scroll_y) + i) % 256;
+//        y = (*(gpu_state.scroll_y) + i) % 256;
+
+        y = i;
 
         /* calc shifted y just once */
         sy = y << 8;
  
-        x = *(gpu_state.scroll_x);
+//        x = *(gpu_state.scroll_x);
+
+       x = 0;
 
         /* goind over the end of the screen? split it in 2 */
         if (x > 256 - 160)
@@ -182,6 +203,8 @@ void static gpu_draw_frame()
     /* magnify surface */
 //    SDL_BlitScaled(screenSurface, NULL, windowSurface, NULL);
 
+    memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
 
@@ -194,9 +217,121 @@ void static gpu_draw_frame()
     fn++;
 }
 
+
+
+/* draw a single line */
+void static __always_inline gpu_draw_line(uint8_t line)
+{
+    int i, t, y, px_start, px_drawn;
+    uint8_t *tiles_map, tile_subline;
+    uint16_t tiles_addr, tile_n, tile_idx, tile_line;
+    uint16_t tile_y;
+
+    /* gotta show BG */
+    if ((*gpu_state.lcd_ctrl).bg)
+    {
+        /* get tile map offset */
+        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
+
+        if ((*gpu_state.lcd_ctrl).bg_tiles)
+             tiles_addr = 0x8000;
+        else
+             tiles_addr = 0x9000;
+
+        /* get absolute address of tiles area */
+        uint8_t *tiles = mmu_addr(tiles_addr);
+
+        /* obtain palette */
+        uint32_t *palette = gpu_state.bg_palette;
+
+        /* calc tile y */
+        tile_y = *(gpu_state.scroll_y) + line;
+
+        /* calc first tile idx */
+        tile_idx = ((tile_y >> 3) * 32) + (*(gpu_state.scroll_x) / 8);
+
+        /* tile line because if we reach the end of the line,   */
+        /* we have to rewind to the first tile of the same line */     
+        tile_line = ((tile_y >> 3) * 32); 
+  
+        /* calc first pixel of frame buffer of the current line */
+        uint16_t pos_fb = line * 160;
+ 
+        /* calc tile subline */
+        tile_subline = tile_y % 8;
+
+        /* walk through different tiles */
+        for (t=0; t<21; t++)
+        {
+            /* resolv tile data memory area */ 
+            if ((*gpu_state.lcd_ctrl).bg_tiles == 0)
+                tile_n = (int8_t) tiles_map[tile_idx];
+            else
+                tile_n = (tiles_map[tile_idx] & 0x00ff);
+
+            /* calc tile data pointer */
+            int16_t tile_ptr = (tile_n * 16) + (tile_subline * 2);
+
+            /* pixels are handled in a super shitty way */
+            /* bit 0 of the pixel is taken from even position tile bytes */
+            /* bit 1 of the pixel is taken from odd position tile bytes */
+
+            uint8_t  pxa[8];
+
+            for (y=0; y<8; y++)
+            {
+                 uint8_t shft = (1 << y);
+
+                 pxa[y] = ((*(tiles + tile_ptr) & shft) ? 1 : 0) |
+                          ((*(tiles + tile_ptr + 1) & shft) ? 2 : 0);
+            }
+
+            /* particular cases for first and last tile (could be shown just a part) */
+            if (t == 0)
+            {
+                px_start = (*(gpu_state.scroll_x) % 8);
+
+                px_drawn = 8 - px_start;
+
+                /* set n pixels */
+                for (i=0; i<px_drawn; i++)
+                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = palette[pxa[i]];
+
+            }
+            else if (t == 20)
+            {
+                px_drawn = *(gpu_state.scroll_x) % 8;
+
+                /* set n pixels */
+                for (i=0; i<px_drawn; i++)
+                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = palette[pxa[i + (8 - px_drawn)]];
+            } 
+            else
+            {
+                /* set 8 pixels */
+                for (i=0; i<8; i++)
+                    gpu_state.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
+
+                px_drawn = 8;
+            }
+
+            /* go to the next tile and rewind in case we reached the 32th */
+            tile_idx++;
+
+            /* don't go to the next line, just rewind */
+            if (tile_idx == (tile_line + 32))
+                tile_idx = tile_line;
+
+            /* go to the next block of 8 pixels of the frame buffer */
+            pos_fb += px_drawn;
+        }
+    }
+}
+
+
+
 /* draw a tile in x,y coordinates */
-void static __always_inline gpu_draw_tile(uint8_t line, uint16_t base_address, 
-                                          int16_t tile_n,
+void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
                                           uint8_t frame_x, uint8_t frame_y,
                                           uint32_t palette[4], char solid)
 {
@@ -206,8 +341,7 @@ void static __always_inline gpu_draw_tile(uint8_t line, uint16_t base_address,
     uint8_t *tiles = mmu_addr(base_address);
 
     /* first pixel on frame buffer position */
-    uint32_t tile_pos_fb = (frame_y * 256) + frame_x;
-    // uint32_t tile_fb = ((frame_y + line) * 256) + frame_x;
+    uint32_t tile_pos_fb = (frame_y * 160) + frame_x;
 
     /* walk through 8x8 pixels                */ 
     /* (2bit per pixel  -> 4 pixels per byte  */
@@ -218,9 +352,7 @@ void static __always_inline gpu_draw_tile(uint8_t line, uint16_t base_address,
         uint8_t tile_y = (p * 4) / 8;
 
         /* calc frame position buffer for 4 pixels */
-        uint32_t pos_fb = (tile_pos_fb + (tile_y * 256)) % 65536; // + tile_x
-
-//        p = (line % 8) * 2;
+        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
 
         /* calc tile pointer */
         int16_t tile_ptr = (tile_n * 16) + p;
@@ -248,19 +380,22 @@ void static __always_inline gpu_draw_tile(uint8_t line, uint16_t base_address,
 /* draw a sprite tile in x,y coordinates */
 void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites_size)
 {
-    int p, x, y, i, pos;
+    int p, x, y, i, j, pos, fb_x, off;
     uint32_t *palette;
-  
+
     /* get absolute address of tiles area */
     uint8_t *tiles = mmu_addr(0x8000);
 
     /* REMEMBER! position of sprites is relative to the visible screen area */
     /* ... and y is shifted by 16 pixels, x by 8                            */
-    y = (oam->y - 16 + *(gpu_state.scroll_y)) % 256;
-    x = (oam->x - 8 + *(gpu_state.scroll_x)) % 256;
-
+    y = oam->y - 16;
+    x = oam->x - 8;
+  
+    if (x < -7)
+        return;
+ 
     /* first pixel on frame buffer position */
-    uint32_t tile_pos_fb = (y * 256) + x;
+    uint32_t tile_pos_fb = (y * 160) + x;
 
     /* choose palette */
     if (oam->palette)
@@ -274,7 +409,7 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
         uint8_t tile_y = (p * 4) / 8;
 
         /* calc frame position buffer for 4 pixels */
-        uint32_t pos_fb = (tile_pos_fb + (tile_y * 256)) % 65536; 
+        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
 
         /* calc tile pointer */
         int16_t tile_ptr = (oam->pattern * 16) + p;
@@ -285,11 +420,11 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
 
         uint8_t  pxa[8];
 
-        for (y=0; y<8; y++)
+        for (j=0; j<8; j++)
         {
-             uint8_t shft = (1 << y);
+             uint8_t shft = (1 << j);
 
-             pxa[y] = ((*(tiles + tile_ptr) & shft) ? 1 : 0) |
+             pxa[j] = ((*(tiles + tile_ptr) & shft) ? 1 : 0) |
                       ((*(tiles + tile_ptr + 1) & shft) ? 2 : 0);
         }
 
@@ -297,10 +432,24 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
         for (i=0; i<8; i++)
         {
             if (oam->x_flip)
+                off = i;
+            else
+                off = 7 - i; 
+
+            /* is it on screen? */
+            fb_x = x + off;
+
+            if (fb_x < 0 || fb_x > 160)
+                continue;
+
+            /* set serial position on frame buffer */
+            pos = pos_fb + off;
+
+/*            if (oam->x_flip)
                 pos = pos_fb + i;
             else
                 pos = pos_fb + (7 - i);
-
+*/
             /* dont draw 0-color pixels */
             if (pxa[i] != 0x00 && 
                (oam->priority == 0 || 
@@ -311,7 +460,7 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
 }
 
 /* update GPU frame buffer */
-void static gpu_update_frame_buffer(uint8_t line)
+void static gpu_update_frame_buffer()
 {
     int i, x, y, z, xmin, xmax, ymin, ymax;
     uint8_t *tiles_map;
@@ -319,7 +468,7 @@ void static gpu_update_frame_buffer(uint8_t line)
     uint16_t tile_pos_x, tile_pos_y;
 
     /* gotta show BG */
-    if ((*gpu_state.lcd_ctrl).bg)
+    if (0 && (*gpu_state.lcd_ctrl).bg)
     {
         /* get tile map offset */
         tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
@@ -353,14 +502,12 @@ void static gpu_update_frame_buffer(uint8_t line)
                 else
                      tile_n = (tiles_map[z] & 0x00ff);
 
-                gpu_draw_tile(line, tiles_addr, tile_n, 
+                gpu_draw_tile(tiles_addr, tile_n, 
                               (uint8_t) tile_pos_x, (uint8_t) tile_pos_y, 
                               gpu_state.bg_palette, 1);
             }
         }
     }
-
-//    return;
 
     /* gotta show sprites? */
     if ((*gpu_state.lcd_ctrl).sprites)
@@ -370,7 +517,10 @@ void static gpu_update_frame_buffer(uint8_t line)
 
         for (i=0; i<40; i++)
         {
-            if (oam[i].x != 0)
+//            if (oam[i].x != 0)
+//                printf("SPRITE POS %d %d\n", oam[i].x, oam[i].y);
+
+            if (oam[i].x != 0 && oam[i].y != 0 && oam[i].x < 168 && oam[i].y < 152)
                 gpu_draw_sprite_tile(&oam[i], (*gpu_state.lcd_ctrl).sprites_size); 
         }
     }
@@ -398,23 +548,22 @@ void static gpu_update_frame_buffer(uint8_t line)
             else
                  tile_n = (tiles_map[z] & 0x00ff);
 
-            tile_pos_x = (z % 32) * 8 + *(gpu_state.window_x) + *(gpu_state.scroll_x) - 7;
-            tile_pos_y = (z / 32) * 8 + *(gpu_state.window_y) + *(gpu_state.scroll_y);
+            tile_pos_x = (z % 32) * 8 + *(gpu_state.window_x) - 7;
+            tile_pos_y = (z / 32) * 8 + *(gpu_state.window_y);
 
             /* gone over the screen visible X? */
-//            if (tile_pos_x > *(gpu_state.scroll_x) + 160)
-//                continue;
+            if (tile_pos_x > 152)
+                continue;
 
             /* gone over the screen visible Y? stop it */
-            if (tile_pos_y > *(gpu_state.scroll_y) + 144)
+            if (tile_pos_y > 136)
                 break;
 
-            gpu_draw_tile(0, tiles_addr, tile_n, 
+            gpu_draw_tile(tiles_addr, tile_n, 
                           (uint8_t) tile_pos_x, (uint8_t) tile_pos_y,
                           gpu_state.bg_palette, 1);
         }
     }
-
 }
 
 /* update GPU internal state given CPU T-states */
@@ -425,6 +574,8 @@ void static __always_inline gpu_step(uint8_t t)
 
     /* update clock counter */
     gpu_state.clocks += t;
+
+    // printf("CLOCKS %d - LINES %d\n", gpu_state.clocks, *gpu_state.ly);
 
     switch((*gpu_state.lcd_status).mode)
     {
@@ -451,7 +602,7 @@ void static __always_inline gpu_step(uint8_t t)
                         gpu_if->lcd_vblank = 1;
 
                         /* update frame in memory */
-                        gpu_update_frame_buffer(0);
+                        gpu_update_frame_buffer();
 
                         /* and finally push it on screen! */
                         gpu_draw_frame();
@@ -549,8 +700,10 @@ void static __always_inline gpu_step(uint8_t t)
         /* update prev line - IT MUST BE DONE EVERY LINE because */
         /* values like scroll x or scroll y could change         */
         /* during the draw of a single frame                     */
-//        gpu_update_frame_buffer((*gpu_state.ly) - 1);
- 
+
+        if ((*gpu_state.ly) > 0 && (*gpu_state.ly) < 145) 
+            gpu_draw_line((*gpu_state.ly) - 1);
+
         /* check if we gotta trigger an interrupt */
         if ((*gpu_state.ly) == (*gpu_state.lyc))
         { 
