@@ -68,10 +68,6 @@ char              gpu_timer_triggered = 0;
 void gpu_timer_handler(int sig, siginfo_t *si, void *uc);
 
 
-
-/* REMOVE ME */
-uint32_t fn = 0;
-
 /* init GPU states */
 void static gpu_init()
 {
@@ -140,13 +136,33 @@ void static gpu_init()
     timer_settime(gpu_timer_id, 0, &gpu_timer, NULL);
 }
 
+/* turn on/off lcd */
+void static gpu_toggle(uint8_t state)
+{
+    /* from off to on */
+    if (state & 0x01)
+    {
+        /* LCD turned on */
+    }
+    else
+    {
+        /* LCD turned off - reset stuff */
+        gpu_state.clocks = 0;
+        *gpu_state.ly = 0;
+        (*gpu_state.lcd_status).mode = 0x02;
+
+        /* first giro */
+        gpu_step(4);
+    }
+
+} 
+
 /* push frame on screen */
 void static gpu_draw_frame()
 {
-    uint16_t i, x, sx, y, sy;
-
     uint32_t *pixel = screenSurface->pixels;
 
+    /* just copy GPU frame buffer into SDL frame buffer */
     memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
 
     /* Update the surface */
@@ -157,64 +173,8 @@ void static gpu_draw_frame()
         sem_wait(&gpu_sem);
 
     gpu_timer_triggered = 0;
-
-    fn++;
-
-//    printf("DISEGNATO FRAME\n");
 
     return;
-
-
-    for (i=0; i<144; i++)
-    {
-//        y = (*(gpu_state.scroll_y) + i) % 256;
-
-        y = i;
-
-        /* calc shifted y just once */
-        sy = y << 8;
- 
-//        x = *(gpu_state.scroll_x);
-
-       x = 0;
-
-        /* goind over the end of the screen? split it in 2 */
-        if (x > 256 - 160)
-        {
-            /* calc how many pixel to copy at first shot */
-            sx = 256 - x;
-
-            /* copy first part of the line */
-            memcpy(pixel, &gpu_state.frame_buffer[x + sy], sx * 4);
-
-            /* copy second part of the line */
-            memcpy(&pixel[sx], &gpu_state.frame_buffer[sy], (160 - sx) * 4);
-        }
-        else
-        {
-            /* boom - copy entire line */
-            memcpy(pixel, &gpu_state.frame_buffer[x + sy], 160 * 4);
-        }
-
-        /* make pixel advance */
-        pixel += 160;
-    }
-
-    /* magnify surface */
-//    SDL_BlitScaled(screenSurface, NULL, windowSurface, NULL);
-
-    memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
-
-    /* Update the surface */
-    SDL_UpdateWindowSurface(window);
-
-    /* wait for 60hz clock */
-    if (gpu_timer_triggered == 0)
-        sem_wait(&gpu_sem);
-
-    gpu_timer_triggered = 0;
-
-    fn++;
 }
 
 
@@ -245,7 +205,7 @@ void static __always_inline gpu_draw_line(uint8_t line)
         uint32_t *palette = gpu_state.bg_palette;
 
         /* calc tile y */
-        tile_y = *(gpu_state.scroll_y) + line;
+        tile_y = (*(gpu_state.scroll_y) + line) % 256;
 
         /* calc first tile idx */
         tile_idx = ((tile_y >> 3) * 32) + (*(gpu_state.scroll_x) / 8);
@@ -324,6 +284,7 @@ void static __always_inline gpu_draw_line(uint8_t line)
 
             /* go to the next block of 8 pixels of the frame buffer */
             pos_fb += px_drawn;
+
         }
     }
 }
@@ -381,6 +342,8 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
 void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites_size)
 {
     int p, x, y, i, j, pos, fb_x, off;
+    uint8_t  sprite_bytes;
+    int16_t  tile_ptr;
     uint32_t *palette;
 
     /* get absolute address of tiles area */
@@ -403,8 +366,11 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
     else
         palette = gpu_state.obj_palette_0;
 
+    /* calc sprite in byte */
+    sprite_bytes = 16 * (sprites_size + 1);
+
     /* walk through 8x8 pixels (2bit per pixel -> 4 pixels per byte) */
-    for (p=0; p<16 * (sprites_size + 1); p+=2)
+    for (p=0; p<sprite_bytes; p+=2)
     {
         uint8_t tile_y = (p * 4) / 8;
 
@@ -412,7 +378,10 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
         uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
 
         /* calc tile pointer */
-        int16_t tile_ptr = (oam->pattern * 16) + p;
+        if (oam->y_flip)
+             tile_ptr = (oam->pattern * 16) + (sprite_bytes - p - 2);
+        else
+             tile_ptr = (oam->pattern * 16) + p;
 
         /* pixels are handled in a super shitty way */
         /* bit 0 of the pixel is taken from even position tile bytes */
@@ -445,11 +414,10 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
             /* set serial position on frame buffer */
             pos = pos_fb + off;
 
-/*            if (oam->x_flip)
-                pos = pos_fb + i;
-            else
-                pos = pos_fb + (7 - i);
-*/
+            /* is it inside the screen? */
+            if (pos > 144 * 160 || pos < 0)
+                continue;
+
             /* dont draw 0-color pixels */
             if (pxa[i] != 0x00 && 
                (oam->priority == 0 || 
@@ -510,16 +478,13 @@ void static gpu_update_frame_buffer()
     }
 
     /* gotta show sprites? */
-    if ((*gpu_state.lcd_ctrl).sprites)
+    if (1 || (*gpu_state.lcd_ctrl).sprites)
     {
         /* make it point to the first OAM object */
         gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
 
         for (i=0; i<40; i++)
         {
-//            if (oam[i].x != 0)
-//                printf("SPRITE POS %d %d\n", oam[i].x, oam[i].y);
-
             if (oam[i].x != 0 && oam[i].y != 0 && oam[i].x < 168 && oam[i].y < 152)
                 gpu_draw_sprite_tile(&oam[i], (*gpu_state.lcd_ctrl).sprites_size); 
         }
@@ -572,6 +537,10 @@ void static __always_inline gpu_step(uint8_t t)
     char ly_changed = 0;
     char mode_changed = 0;
 
+    /* advance only in case of turned on display */
+    if ((*gpu_state.lcd_ctrl).display == 0)
+        return;
+
     /* update clock counter */
     gpu_state.clocks += t;
 
@@ -583,7 +552,7 @@ void static __always_inline gpu_step(uint8_t t)
          * during HBLANK (CPU can access VRAM)
          */
         case 0: /* check if an HBLANK is complete (201 t-states) */
-                if (gpu_state.clocks > 200)
+                if (gpu_state.clocks >= 204)
                 {
                     /*
                      * if current line > 142, enter mode 01 (VBLANK)
@@ -623,7 +592,7 @@ void static __always_inline gpu_step(uint8_t t)
                     (*gpu_state.ly)++;
 
                     /* reset clock counter */
-                    gpu_state.clocks -= 201;
+                    gpu_state.clocks -= 204;
                 }
 
                 break;
@@ -632,10 +601,10 @@ void static __always_inline gpu_step(uint8_t t)
          * during VBLANK (CPU can access VRAM)
          */
         case 1: /* check if an HBLANK is complete (460 t-states) */
-                if (gpu_state.clocks > 459) 
+                if (gpu_state.clocks >= 456) 
                 {
                     /* reset clock counter */
-                    gpu_state.clocks -= 460;
+                    gpu_state.clocks -= 456;
 
                     /* notify ly has changed */
                     ly_changed = 1;
@@ -660,7 +629,7 @@ void static __always_inline gpu_step(uint8_t t)
          * during OAM (LCD access FE00-FE90, so CPU cannot)
          */
         case 2: /* check if an OAM is complete (80 t-states) */
-                if (gpu_state.clocks > 79)
+                if (gpu_state.clocks >= 80)
                 {
                     /* reset clock counter */
                     gpu_state.clocks -= 80;
@@ -677,11 +646,11 @@ void static __always_inline gpu_step(uint8_t t)
         /*
          * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
          */
-        case 3: /* check if a VRAM read is complete (177 t-states) */
-                if (gpu_state.clocks > 176)
+        case 3: /* check if a VRAM read is complete (172 t-states) */
+                if (gpu_state.clocks >= 172)
                 {
                     /* reset clock counter */
-                    gpu_state.clocks -= 177;
+                    gpu_state.clocks -= 172;
 
                     /* notify mode has changed */
                     mode_changed = 1;

@@ -325,13 +325,6 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         case 0xFD: 
                    break;
 
-        /* CPI      */
-/*        case 0xFE: z80_cmp(mmu_read(state.pc + 1));
-                   state.flags.ac = 0;
-                   state.t = 7;
-                   b = 2;
-                   break;
-*/
         case 0xCB: /* don't add cycles! it's just a test to know if it's a GB OP */
                    byte = mmu_read_no_cyc(state.pc + 1);
 
@@ -342,9 +335,6 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 
                    /* add 4 cycles */
                    cycles_step(4);
-
-                   /* all 8 cycles but the HL one */
-                   state.t = 8;
 
                    switch (byte & 0x37)
                    {
@@ -425,6 +415,7 @@ void gameboy_start(uint8_t *rom, size_t size)
 {
     uint8_t  op;
     uint8_t  byte;
+    int      i;
 
     /* init z80 */
     z80_init(); 
@@ -447,6 +438,13 @@ void gameboy_start(uint8_t *rom, size_t size)
 
     /* init MMU */
     mmu_init(mbc);
+
+    /* title */
+    for (i=0x134; i<0x143; i++)
+        if (rom[i] > 0x40 && rom[i] < 0x5B)
+            printf("%c", rom[i]);
+
+    printf("\n");
 
     /* get ROM banks */
     byte = rom[0x148];
@@ -527,7 +525,7 @@ void gameboy_start(uint8_t *rom, size_t size)
     int_f = mmu_addr(0xFF0F);
 
     /* start from 0x0000 and execute BIOS */
-    while (state.pc != 0x100)
+    while (0 && state.pc != 0x100)
     {
         /* get op */
         op = mmu_read(state.pc);
@@ -570,13 +568,26 @@ void gameboy_start(uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF40, 0x91);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
+    mmu_write_no_cyc(0xFF44, 0x90);  
     mmu_write_no_cyc(0xFF45, 0x00); 
     mmu_write_no_cyc(0xFF47, 0xFC); 
     mmu_write_no_cyc(0xFF48, 0xFF); 
     mmu_write_no_cyc(0xFF49, 0xFF); 
-    mmu_write_no_cyc(0xFF4A, 0x00); 
+    mmu_write_no_cyc(0xFF4A, 0x10); 
     mmu_write_no_cyc(0xFF4B, 0x00); 
     mmu_write_no_cyc(0xFFFF, 0x00);  
+
+    mmu_write_no_cyc(0xFFFE, 0x0B);
+    state.a = 0x11;
+    state.b = 0x00;
+    state.c = 0x13;
+    state.d = 0x00;
+    state.e = 0xd8;
+    state.h = 0x01;
+    state.l = 0x4d;
+    state.pc = 0x0100;
+    state.sp = 0xFFFE;
+    *state.f = 0x90;
  
     /* running stuff! */
     while (!quit)
@@ -594,8 +605,12 @@ void gameboy_start(uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xC22B));
-  */     
+ printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, *state.de, *state.hl); 
+*/
+
+// mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));
+
+       
     /*r++;
     spaces_changed = 0;
 }*/

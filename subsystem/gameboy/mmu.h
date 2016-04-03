@@ -114,6 +114,9 @@ void static __always_inline *mmu_addr(uint16_t a)
 /* read 8 bit data from a memory addres (not affecting cycles) */
 uint8_t static __always_inline mmu_read_no_cyc(uint16_t a)
 {
+    if (a >= 0xE000 && a <= 0xFDFF)
+        return memory[a - 0x2000];
+
     return memory[a];
 }
 
@@ -129,9 +132,7 @@ uint8_t static __always_inline mmu_read(uint16_t a)
 
     /* RAM mirror */
     if (a >= 0xE000 && a <= 0xFDFF)
-    {
         return memory[a - 0x2000];
-    }
 
     return memory[a];
 }
@@ -146,7 +147,7 @@ void static __always_inline mmu_write_no_cyc(uint16_t a, uint8_t v)
 void static __always_inline mmu_write(uint16_t a, uint8_t v)
 {
     /* update cycles AFTER memory set */
-    // cycles_step(4);
+    cycles_step(4);
 
     /* wanna write on ROM? */
     if (a < 0x8000)
@@ -163,6 +164,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
             case 0x01: 
             case 0x02:  
             case 0x03: 
+
                        if (a >= 0x2000 && a <= 0x3FFF) 
                        {
                            /* reset 5 bits */
@@ -221,13 +223,11 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return; 
     }
 
-/*
     if (a >= 0xE000 && a <= 0xFDFF)
     {
-        printf("ECHOOOOOOOOOOOOOO WRITE\n");
         memory[a - 0x2000] = v;
         return;
-    } */
+    } 
 
     /* resetting timer DIV */
     if (a == 0xFF04)
@@ -236,18 +236,12 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return;
     }
 
-    /* wanna write on serial port? */
-/*    if (a == 0xFF02)
+    /* LCD turned on/off? */
+    if (a == 0xFF40)
     {
-        printf("SERIAL SCRIVO SU FF02 %02X\n", v);
-
-        memory[0xff02] = v;
-
-        return;
-    }*/
-
-    /* update cycles AFTER memory set */
-    cycles_step(4);
+        if ((v ^ memory[0xFF40]) & 0x01)
+            gpu_toggle(v);
+    }
 
     /* finally set memory byte with data */
     memory[a] = v;
@@ -284,7 +278,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         gpu_state.obj_palette_1[3] = gpu_color_lookup[(v & 0xc0) >> 6];
     }
 
-    if (a == 0xFF40)
+    if (0 && a == 0xFF40)
     {
 /*            printf("BG: %d - Sprites: %d - Sp Size: %d - BG Tile Map: %d\n",
                    (*gpu_state.lcd_ctrl).bg, (*gpu_state.lcd_ctrl).sprites,

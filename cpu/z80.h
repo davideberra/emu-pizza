@@ -1363,7 +1363,7 @@ int static __always_inline z80_ext_cb_execute()
         case 0x03: z80_set(regs_src[reg], (code >> 3) & 0x07);
 
                    if (reg == 0x06)
-                       cycles_step(4);
+                       cycles_step(4); 
 
                    break;
 
@@ -1476,7 +1476,6 @@ int static __always_inline z80_ext_dd_execute()
         case 0x34: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, 
                                  z80_inr(mmu_read(*state.ix + d))); 
-                   state.t = 23;
                    b = 3;
                    break;
  
@@ -1484,20 +1483,17 @@ int static __always_inline z80_ext_dd_execute()
         case 0x35: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d,
                                  z80_dcr(mmu_read(*state.ix + d)));  
-                   state.t = 23;
                    b = 3;
                    break;
 
         /* LD (IX+d),N    */
         case 0x36: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, mmu_read(state.pc + 3));
-                   state.t = 19;
                    b = 4;
                    break;
  
         /* ADD IX+SP      */
         case 0x39: *state.ix = z80_add_16(*state.ix, state.sp);
-                   state.t = 15;
                    break;
 
         /* LD  B,(IX+d)   */
@@ -2192,7 +2188,6 @@ int static __always_inline z80_ext_fd_execute()
         /* DEC (IY+d)     */
         case 0x35: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, z80_dcr(mmu_read(*state.iy + d)));
-                   state.t = 23;
                    b = 3;
                    break;
 
@@ -2948,17 +2943,14 @@ int static __always_inline z80_execute(unsigned char code)
         /* INX  SP   */
         case 0x33: state.sp++;           
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  M    */
         case 0x34: mmu_write(*state.hl, z80_inr(mmu_read(*state.hl)));
-                   state.t = 11;
                    break;
 
         /* DCR  M    */
         case 0x35: mmu_write(*state.hl, z80_dcr(mmu_read(*state.hl)));
-                   state.t = 7;
                    break;
 
         /* MVI  M    */

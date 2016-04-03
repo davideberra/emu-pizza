@@ -23,6 +23,7 @@
 /* prototypes */
 void static                 gpu_init();
 void static __always_inline gpu_step(uint8_t t);
+void static                 gpu_toggle(uint8_t state);
 
 /* Gameboy LCD Control - R/W accessing 0xFF40 address */
 typedef struct gpu_lcd_ctrl_s
