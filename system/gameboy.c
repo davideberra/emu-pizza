@@ -436,9 +436,6 @@ void gameboy_start(uint8_t *rom, size_t size)
         case 0x06: printf("ROM + MBC2 + BATTERY\n"); break;
     }
 
-    /* init MMU */
-    mmu_init(mbc);
-
     /* title */
     for (i=0x134; i<0x143; i++)
         if (rom[i] > 0x40 && rom[i] < 0x5B)
@@ -462,6 +459,9 @@ void gameboy_start(uint8_t *rom, size_t size)
         case 0x06: printf("128 banks\n"); break;
         case 0x07: printf("256 banks\n"); break;
     }
+
+    /* init MMU */
+    mmu_init(mbc, byte);
 
     /* get RAM banks */
     byte = rom[0x149];
@@ -577,6 +577,8 @@ void gameboy_start(uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF4B, 0x00); 
     mmu_write_no_cyc(0xFFFF, 0x00);  
 
+
+
     mmu_write_no_cyc(0xFFFE, 0x0B);
     state.a = 0x11;
     state.b = 0x00;
@@ -605,7 +607,8 @@ void gameboy_start(uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, *state.de, *state.hl); 
+ printf("A: %02x BC: %04x DE: %04x HL: %04x FF44: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xdb4d)); 
+
 */
 
 // mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));

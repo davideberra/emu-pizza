@@ -46,6 +46,9 @@
 /* cartridge type */
 uint8_t carttype;
 
+/* number of switchable roms */
+uint8_t roms;
+
 /* system memory (!= cartridge memory) */
 uint8_t memory[65536];
 
@@ -63,12 +66,13 @@ uint8_t ram_current_bank = 1;
 uint8_t banking = 0;
 
 /* init (alloc) system state.memory */
-void static mmu_init(uint8_t c)
+void static mmu_init(uint8_t c, uint8_t rn)
 {
     rom_current_bank = 0x01;
     ram_current_bank = 0x01;
 
     carttype = c;
+    roms = rn;
 }
 
 /* init (alloc) system state.memory */
@@ -171,7 +175,13 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            uint8_t b = rom_current_bank & 0xE0;
 
                            /* set them with new value */
-                           b |= v;
+                           b |= v & 0x1F;
+
+                           /* filter with max ROM available */
+                           // uint8_t filter = 0xFF >> (8 - roms);
+
+                           /* filter result to get a value < max rom number */
+                           // b &= filter;
  
                            if (b != rom_current_bank)
                            {
@@ -191,6 +201,12 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 
                                /* set them with new value */
                                b |= (v << 5);
+
+                               /* filter with max ROM available */
+                               uint8_t filter = 0xFF >> (8 - roms);
+
+                               /* filter result to get a value < max rom number */
+                               b &= filter;
 
                                if (b != rom_current_bank)
                                {
@@ -229,6 +245,24 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return;
     } 
 
+    /* accessing VRAM */
+    if (a >= 0x8000 && a <= 0x9FFF)
+    {
+        /* can't access vram! */
+        if ((*gpu_state.lcd_status).mode == 0x03)
+            return; 
+
+    }
+
+    /* accessing OAM */
+    if (a >= 0xFE00 && a <= 0xFE9F)
+    {
+        /* can't access OAM or VRAM! */
+        if ((*gpu_state.lcd_status).mode == 0x02 || 
+            (*gpu_state.lcd_status).mode == 0x03)
+            return;
+    }
+
     /* resetting timer DIV */
     if (a == 0xFF04)
     {
@@ -249,6 +283,10 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     if (a == 0xFF46)
     {
         uint16_t src = v * 256;
+
+        if ((*gpu_state.lcd_status).mode == 0x02 || 
+            (*gpu_state.lcd_status).mode == 0x03)
+            return;
 
         /* copy an entire block of memory into OAM area */
         memcpy(&memory[0xFE00], &memory[src], 160);

@@ -66,6 +66,8 @@ char              gpu_timer_triggered = 0;
 
 /* prototype for timer handler */
 void gpu_timer_handler(int sig, siginfo_t *si, void *uc);
+void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
+                                                 uint8_t line);
 
 
 /* init GPU states */
@@ -108,6 +110,9 @@ void static gpu_init()
     gpu_state.ly         = mmu_addr(0xFF44);
     gpu_state.lyc        = mmu_addr(0xFF45);
     gpu_if               = mmu_addr(0xFF0F);
+    
+    /* start with state 0x02 */
+    (*gpu_state.lcd_status).mode = 0x02;
 
     /* init semaphore for 60hz sync */
     sem_init(&gpu_sem, 0, 0);
@@ -186,7 +191,7 @@ void static __always_inline gpu_draw_line(uint8_t line)
     uint8_t *tiles_map, tile_subline;
     uint16_t tiles_addr, tile_n, tile_idx, tile_line;
     uint16_t tile_y;
-
+    
     /* gotta show BG */
     if ((*gpu_state.lcd_ctrl).bg)
     {
@@ -287,6 +292,27 @@ void static __always_inline gpu_draw_line(uint8_t line)
 
         }
     }
+
+    /* gotta show sprites? */
+    if ((*gpu_state.lcd_ctrl).sprites)
+    {
+        /* make it point to the first OAM object */
+        gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
+
+        /* calc sprite height */
+        uint8_t h = ((*gpu_state.lcd_ctrl).sprites_size + 1) * 8;
+
+        for (i=0; i<40; i++)
+        {
+            /* extract sprites that intersect current drawn line */
+            if (oam[i].x != 0 && oam[i].y != 0 && 
+                oam[i].x < 168 && oam[i].y < 152 && 
+                line < (oam[i].y + h - 16) &&
+                line >= (oam[i].y - 16))
+                gpu_draw_sprite_line(&oam[i], (*gpu_state.lcd_ctrl).sprites_size, line);
+        }
+    }
+
 }
 
 
@@ -339,7 +365,8 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
 }
 
 /* draw a sprite tile in x,y coordinates */
-void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites_size)
+void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
+                                                 uint8_t line)
 {
     int p, x, y, i, j, pos, fb_x, off;
     uint8_t  sprite_bytes;
@@ -356,7 +383,7 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
   
     if (x < -7)
         return;
- 
+
     /* first pixel on frame buffer position */
     uint32_t tile_pos_fb = (y * 160) + x;
 
@@ -370,9 +397,13 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
     sprite_bytes = 16 * (sprites_size + 1);
 
     /* walk through 8x8 pixels (2bit per pixel -> 4 pixels per byte) */
+    /* 1 line is 8 pixels -> 2 bytes per line                        */
     for (p=0; p<sprite_bytes; p+=2)
     {
-        uint8_t tile_y = (p * 4) / 8;
+        uint8_t tile_y = p / 2;
+
+        if (tile_y + y != line)
+            continue;
 
         /* calc frame position buffer for 4 pixels */
         uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
@@ -415,13 +446,13 @@ void static __always_inline gpu_draw_sprite_tile(gpu_oam_t *oam, uint8_t sprites
             pos = pos_fb + off;
 
             /* is it inside the screen? */
-            if (pos > 144 * 160 || pos < 0)
+            if (pos >= 144 * 160 || pos < 0)
                 continue;
 
             /* dont draw 0-color pixels */
             if (pxa[i] != 0x00 && 
                (oam->priority == 0 || 
-               (oam->priority == 1 && gpu_state.frame_buffer[pos] == palette[0x00]))) 
+               (oam->priority == 1 && gpu_state.frame_buffer[pos] == palette[0x00])))  
                 gpu_state.frame_buffer[pos] = palette[pxa[i]];
         }
     }
@@ -478,7 +509,7 @@ void static gpu_update_frame_buffer()
     }
 
     /* gotta show sprites? */
-    if (1 || (*gpu_state.lcd_ctrl).sprites)
+    if (0 && (*gpu_state.lcd_ctrl).sprites)
     {
         /* make it point to the first OAM object */
         gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
@@ -486,7 +517,11 @@ void static gpu_update_frame_buffer()
         for (i=0; i<40; i++)
         {
             if (oam[i].x != 0 && oam[i].y != 0 && oam[i].x < 168 && oam[i].y < 152)
-                gpu_draw_sprite_tile(&oam[i], (*gpu_state.lcd_ctrl).sprites_size); 
+            {
+                printf("disegno sprite %d in pos %d %d\n", i, oam[i].x, oam[i].y);
+
+               // gpu_draw_sprite_tile(&oam[i], (*gpu_state.lcd_ctrl).sprites_size); 
+            }
         }
     }
 
