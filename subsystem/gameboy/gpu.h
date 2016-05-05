@@ -70,6 +70,8 @@ void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites
                                                  uint8_t line);
 
 
+int magnify_rate = 2;
+
 /* init GPU states */
 void static gpu_init()
 {
@@ -85,7 +87,7 @@ void static gpu_init()
     window = SDL_CreateWindow("Emu Pizza - Gameboy",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
-                              160, 144,
+                              160 * magnify_rate, 144 * magnify_rate,
                               SDL_WINDOW_SHOWN);
 
     /* get window surface */
@@ -165,10 +167,29 @@ void static gpu_toggle(uint8_t state)
 /* push frame on screen */
 void static gpu_draw_frame()
 {
+    int x,y,p;
+
     uint32_t *pixel = screenSurface->pixels;
+   
+    uint32_t *line = malloc(sizeof(uint32_t) * 160 * magnify_rate);
 
     /* just copy GPU frame buffer into SDL frame buffer */
-    memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+    //memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+
+    /* magnify! */
+    for (y=0; y<144; y++)
+    {
+        for (x=0; x<160; x++)
+        { 
+            for (p=0; p<magnify_rate; p++)
+                line[p + (x * magnify_rate)] = gpu_state.frame_buffer[x + (y * 160)];
+        }
+
+        for (p=0; p<magnify_rate; p++)
+            memcpy(&pixel[((y * magnify_rate) + p) * 160 * magnify_rate], line, sizeof(uint32_t) * 160 * magnify_rate);
+    } 
+
+    free(line);
 
     /* Update the surface */
     SDL_UpdateWindowSurface(window);

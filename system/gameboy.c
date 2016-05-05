@@ -218,8 +218,8 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.t = 4;
                    break;
 
-        /* ERASED           */
-        case 0xD3: printf("?????\n");
+        /* not present on Gameboy Z80 */
+        case 0xD3: 
                    break;
 
         /* RETI            */
@@ -227,9 +227,9 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.t = 16;
                    return z80_ret();
 
+        /* not present on Gameboy Z80 */
         case 0xDB:
         case 0xDD:
-                   printf("NON IMPLEMENTAO: %02X\n", op);
                    break;
 
         /* LD   (FF00+N),A */
@@ -241,9 +241,9 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         case 0xE2: mmu_write(0xFF00 + state.c, state.a);
                    break;
 
+        /* not present on Gameboy Z80 */
         case 0xE3:
         case 0xE4:
-                   printf("NON IMPLEMENTAO: %02X\n", op);
                    break;
 
         /* ADD  SP,dd      */
@@ -273,10 +273,10 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    b = 3; 
                    break;
 
+        /* not present on Gameboy Z80 */
         case 0xEB:
         case 0xEC:
         case 0xED:
-                   printf("NON IMPLEMENTAO: %02X\n", op);
                    break;
 
         /* LD  A,(FF00+N) */
@@ -288,8 +288,8 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         case 0xF2: state.a = mmu_read(0xFF00 + state.c);
                    break;
 
-        /* REMOVED        */
-        case 0xF4: printf("EEEEEEEEEEEEEE?\n"); exit(1);
+        /* not present on Gameboy Z80 */
+        case 0xF4: 
                    break;
 
         /* LD  HL,SP+dd   */
@@ -321,7 +321,8 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    b = 3;
                    break;
 
-        case 0xFC: /* both removed */
+        /* not present on Gameboy Z80 */
+        case 0xFC: 
         case 0xFD: 
                    break;
 
@@ -577,10 +578,10 @@ void gameboy_start(uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF4B, 0x00); 
     mmu_write_no_cyc(0xFFFF, 0x00);  
 
+    mmu_write_no_cyc(0xC000, 0x08);
 
-
-    mmu_write_no_cyc(0xFFFE, 0x0B);
-    state.a = 0x11;
+    mmu_write_no_cyc(0xFFFE, 0x69);
+    state.a = 0x01;
     state.b = 0x00;
     state.c = 0x13;
     state.d = 0x00;
@@ -607,8 +608,7 @@ void gameboy_start(uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x FF44: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xdb4d)); 
-
+ printf("A: %02x BC: %04x DE: %04x HL: %04x 0000: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0x0000)); 
 */
 
 // mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));
@@ -625,6 +625,13 @@ void gameboy_start(uint8_t *rom, size_t size)
 
         /* keep low bits always set to zero */
         *state.f &= 0xf0;
+
+        /* if last op was Interrupt Enable (0xFB), we need to check for INTR on next cycle */
+        // if (op == 0xFB)
+        //    continue;
+
+        // if (*int_e & 0x10)
+        //     printf("PAD INTERRUPT ENABLED\n");
 
         /* interrupts filtered by enable flags */
         uint8_t int_r = (*int_f & *int_e);

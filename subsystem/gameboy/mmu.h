@@ -102,9 +102,11 @@ void static mmu_load_cartridge(uint8_t *data, size_t sz)
 /* move 8 bit from s to d */
 void static __always_inline mmu_move(uint16_t d, uint16_t s)
 {
-    cycles_step(8);
+//    cycles_step(8);
 
-    memory[d] = memory[s];
+    mmu_write(d, mmu_read(s));
+
+//    memory[d] = memory[s];
 }
 
 /* return absolute memory address */
@@ -157,7 +159,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     if (a < 0x8000)
     {
         /* return in case of ONLY ROM */
-        if (carttype == 0)
+        if (carttype == 0x00)
             return;
 
         /* TODO - MBC strategies */

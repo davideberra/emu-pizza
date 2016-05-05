@@ -2955,7 +2955,6 @@ int static __always_inline z80_execute(unsigned char code)
 
         /* MVI  M    */
         case 0x36: mmu_move(*state.hl, state.pc + 1);
-                   state.t = 4;
                    b = 2;
                    break;
 
@@ -2964,18 +2963,12 @@ int static __always_inline z80_execute(unsigned char code)
                    state.flags.ac = 0;
                    state.flags.n  = 0;
                    z80_set_flags_53(state.a);
-                   state.t = 4;
                    break;
 
         /* JRC       */
         case 0x38: cycles_step(4);
                    if (state.flags.cy)
-                   {
-                       state.t = 12;
                        state.pc += (char) mmu_read(state.pc + 1);
-                   }
-                   else
-                       state.t = 7;
 
                    b = 2;
                    break;                          
