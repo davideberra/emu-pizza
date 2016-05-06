@@ -49,7 +49,13 @@ Supported ROMS
 * [8080 Exercizer](https://github.com/begoon/8080ex1) -- A tougher Intel 8080 exercizer
 * Zextest -- A Zilog Z80 exercizer
 * Space Invaders -- Guess what
-* Gameboy roms with no MBC -- (e.g. Tetris, Dr Mario, Amida)
+* Most of Gameboy roms with MBC1, MBC2 or no MBC at all -- (e.g. Tetris, Dr Mario, Amida)
+
+Todo
+----
+* MBC3, MBC5 memory controllers
+* Data save
+* Sound
 
 Credits
 -------
