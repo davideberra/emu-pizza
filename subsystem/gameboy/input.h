@@ -70,10 +70,7 @@ uint8_t input_get_keys(uint8_t line)
 
         /* DOWN pressed? */
         if (kb_state[SDL_SCANCODE_DOWN])
-        {
-            printf("PRESSATO DOWN\n");
             v ^= 0x08;
-        }
     }
 
     if ((line & 0x30) == 0x10)

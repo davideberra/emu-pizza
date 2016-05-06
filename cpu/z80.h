@@ -83,8 +83,7 @@ typedef struct z80_state_s
     uint8_t        int_enable;
 
     /* latest T-state */
-    uint8_t        t;
-    uint8_t        spare3;
+    uint16_t       spare3;
 
     /* total cycles */
     uint64_t       cycles;
@@ -614,9 +613,6 @@ int static __always_inline z80_call(unsigned int addr)
 
     /* move PC to the called function address */
     state.pc = addr;
-
-    /* 17 states */
-    state.t = 17;
 
     spaces += 2;
     spaces_changed = 1;
@@ -1338,17 +1334,11 @@ int static __always_inline z80_ext_cb_execute()
 
         /* BIT Family */
         case 0x01: if (reg == 0x06)
-                   {
                        z80_bit(regs_src[reg], (code >> 3) & 0x07, 
                                (uint8_t) *state.hl);
-                       state.t = 12;
-                   }
                    else
-                   {
                        z80_bit(regs_src[reg], (code >> 3) & 0x07, 
                                *regs_src[reg]);
-                       state.t = 8;
-                   }
                    break;
 
         /* RES Family */
@@ -1399,76 +1389,62 @@ int static __always_inline z80_ext_dd_execute()
     {
         /* ADD IX+BC      */
         case 0x09: *state.ix = z80_add_16(*state.ix, *state.bc);
-                   state.t = 15;
                    break;
 
         /* ADD IX+DE      */
         case 0x19: *state.ix = z80_add_16(*state.ix, *state.de);
-                   state.t = 15;
                    break;
 
         /* LD  IX,NN      */
         case 0x21: *state.ix = NN;
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* LD  (NN),IX    */
         case 0x22: mmu_write_16(NN, *state.ix);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* INC IX         */
         case 0x23: *state.ix = *state.ix + 1;
-                   state.t = 10;
                    break;
 
         /* INC IXH        */
         case 0x24: state.ixh = z80_inr(state.ixh);
-                   state.t = 4;
                    break;
 
         /* DEC IXH        */
         case 0x25: state.ixh = z80_dcr(state.ixh);
-                   state.t = 4;
                    break;
 
         /* LD  IXH,N      */
         case 0x26: state.ixh = mmu_read(state.pc + 2);
-                   state.t = 7;
                    b = 3;
                    break;
 
         /* ADD IX+IX      */
         case 0x29: *state.ix = z80_add_16(*state.ix, *state.ix);
-                   state.t = 15;
                    break;
 
         /* LD  IX,(NN)    */
         case 0x2A: *state.ix = mmu_read_16(NN);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* DEC IX         */
         case 0x2B: (*state.ix)--; 
-                   state.t = 10;
                    break;
 
         /* INC IXL        */
         case 0x2C: state.ixl = z80_inr(state.ixl);
-                   state.t = 4;
                    break;
 
         /* DEC IXL        */
         case 0x2D: state.ixl = z80_dcr(state.ixl);
-                   state.t = 4;
                    break;
 
         /* LD  IXL,N      */
         case 0x2E: state.ixl = mmu_read(state.pc + 2);
-                   state.t = 7;
                    b = 3;
                    break;
 
@@ -1499,304 +1475,252 @@ int static __always_inline z80_ext_dd_execute()
         /* LD  B,(IX+d)   */
         case 0x46: d = mmu_read(state.pc + 2);
                    state.b = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  C,(IX+d)   */
         case 0x4E: d = mmu_read(state.pc + 2);
                    state.c = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  D,(IX+d)   */
         case 0x56: d = mmu_read(state.pc + 2);
                    state.d = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  E,(IX+d)   */
         case 0x5E: d = mmu_read(state.pc + 2);
                    state.e = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IXH, B     */
         case 0x60: state.ixh = state.b;
-                   state.t = 4;
                    break;
 
         /* LD  IXH, C     */
         case 0x61: state.ixh = state.c;
-                   state.t = 4;
                    break;
 
         /* LD  IXH, D     */
         case 0x62: state.ixh = state.d;
-                   state.t = 4;
                    break;
 
         /* LD  IXH, E     */
         case 0x63: state.ixh = state.e;
-                   state.t = 4;
                    break;
 
         /* LD  IXH, H     */
         case 0x64: state.ixh = state.h;
-                   state.t = 4;
                    break;
 
         /* LD  IXH, L     */
         case 0x65: state.ixh = state.l;
-                   state.t = 4;
                    break;
 
         /* LD  H,(IX+d)   */
         case 0x66: d = mmu_read(state.pc + 2);
                    state.h = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IXH, A     */
         case 0x67: state.ixh = state.a;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, C     */
         case 0x68: state.ixl = state.b;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, C     */
         case 0x69: state.ixl = state.c;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, D     */
         case 0x6A: state.ixl = state.d;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, E     */
         case 0x6B: state.ixl = state.e;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, H     */
         case 0x6C: state.ixl = state.ixh;
-                   state.t = 4;
                    break;
 
         /* LD  IXL, IXL   */
         case 0x6D: state.ixl = state.ixl;
-                   state.t = 4;
                    break;
 
         /* LD  L,(IX+d)   */
         case 0x6E: d = mmu_read(state.pc + 2);
                    state.l = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IXL, A     */
         case 0x6F: state.ixl = state.a;
-                   state.t = 4;
                    break;
 
         /* MOV (IX+d), B  */
         case 0x70: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.b);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), C  */
         case 0x71: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.c);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), D  */
         case 0x72: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), E  */
         case 0x73: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.e);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), H  */
         case 0x74: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.h);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), L  */
         case 0x75: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.l);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IX+d), A  */
         case 0x77: d = mmu_read(state.pc + 2);
                    mmu_write(*state.ix + d, state.a);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  A,(IX+d)   */
         case 0x7E: d = mmu_read(state.pc + 2);
                    state.a = mmu_read(*state.ix + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* ADD IXH        */
         case 0x84: z80_add(state.ixh);
-                   state.t = 4; 
                    break;
 
         /* ADD IXL        */
         case 0x85: z80_add(state.ixl);
-                   state.t = 4; 
                    break;
 
         /* ADD (IX+d)     */
         case 0x86: d = mmu_read(state.pc + 2);
                    z80_add(mmu_read(*state.ix + d));
-                   state.t = 19; 
                    b = 3;
                    break;
 
         /* ADC  IXH      */
         case 0x8C: z80_adc((uint8_t) (*state.ix >> 8));
-                   state.t = 4;
                    break;
 
         /* ADC  IXL      */
         case 0x8D: z80_adc(state.ixl);
-                   state.t = 4;
                    break;
 
         /* ADC (IX+d)    */
         case 0x8E: d = mmu_read(state.pc + 2);
                    z80_adc(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* SUB IXH        */
         case 0x94: z80_sub(state.ixh);
-                   state.t = 4;
                    break;
 
         /* SUB IXL        */
         case 0x95: z80_sub(state.ixl);
-                   state.t = 4;
                    break;
 
         /* SUB (IX+d)     */
         case 0x96: d = mmu_read(state.pc + 2);
                    z80_sub(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* SBC  IXH       */
         case 0x9C: z80_sbc(state.ixh);
-                   state.t = 4;
                    break;
 
         /* SBC  IXL       */
         case 0x9D: z80_sbc(state.ixl);
-                   state.t = 4;
                    break;
 
         /* SBC (IX+d)     */
         case 0x9E: d = mmu_read(state.pc + 2);
                    z80_sbc(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* ANA  IXH       */
         case 0xA4: z80_ana((uint8_t) (*state.ix >> 8));
-                   state.t = 4;
                    break;
 
         /* ANA  IXL       */
         case 0xA5: z80_ana(state.ixl);
-                   state.t = 4;
                    break;
 
         /* ANA (IX+d)     */
         case 0xA6: d = mmu_read(state.pc + 2);
                    z80_ana(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* XRA  IXH       */
         case 0xAC: z80_xra(state.ixh);
-                   state.t = 4;
                    break;
 
         /* XRA  IXL       */
         case 0xAD: z80_xra(state.ixl);
-                   state.t = 4;
                    break;
 
         /* XRA (IX+d)     */
         case 0xAE: d = mmu_read(state.pc + 2);
                    z80_xra(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* OR    IXH      */
         case 0xB4: z80_ora(state.ixh);
-                   state.t = 4; 
                    break;
 
         /* OR    IXL      */
         case 0xB5: z80_ora(state.ixl);
-                   state.t = 4; 
                    break;
 
         /* ORA (IX+d)     */
         case 0xB6: d = mmu_read(state.pc + 2);
                    z80_ora(mmu_read(*state.ix + d));
-                   state.t = 19; 
                    b = 3;
                    break;
 
         /* CMP   IXH      */
         case 0xBC: z80_cmp((uint8_t) (*state.ix >> 8));
-                   state.t = 4;
                    break;
 
         /* CMP   IXL      */
         case 0xBD: z80_cmp(state.ixl);
-                   state.t = 4;
                    break;
 
         /* CMP (IX+d)     */
         case 0xBE: d = mmu_read(state.pc + 2);
                    z80_cmp(mmu_read(*state.ix + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
@@ -1861,29 +1785,24 @@ int static __always_inline z80_ext_dd_execute()
 
                            }
 
-                           state.t = 23;
-
                            break;
 
                        /* BIT Family */
                        case 0x01: z80_bit(mmu_addr(*state.ix + d), 
                                       (mmu_read(state.pc + 3) >> 3) & 0x07, 
                                       d);
-                                  state.t = 20;
                                   break;
                        
                        /* RES Family */
                        case 0x02: *regs_dst[reg] = 
                                       z80_res(mmu_addr(*state.ix + d), 
                                       (mmu_read(state.pc + 3) >> 3) & 0x07);
-                                  state.t = 23;
                                   break;
                        
                        /* SET Family */
                        case 0x03: *regs_dst[reg] = 
                                       z80_set(mmu_addr(*state.ix + d), 
                                       (mmu_read(state.pc + 3) >> 3) & 0x07);
-                                  state.t = 23;
                                   break;
                      
                    }
@@ -1894,20 +1813,17 @@ int static __always_inline z80_ext_dd_execute()
         /* POP   IX     */       
         case 0xE1: *state.ix = mmu_read_16(state.sp); 
                    state.sp += 2;
-                   state.t = 14;
                    break;
 
         /* PUSH IX        */
         case 0xE5: mmu_write_16(state.sp - 2, *state.ix);
                    state.sp -= 2;
-                   state.t = 15;
                    break;
 
 //        default: printf("Unimplemented Z80 DD OP code: %02x\n", code);
 /*                 state.skip_cycle = 1;
                  b = 1;  */
                  b = 1;
-                 state.t = 4;
                  
     } 
 
@@ -1926,171 +1842,129 @@ int static __always_inline z80_ext_ed_execute()
     {
         /* SBC  HL,BC */
         case 0x42: *state.hl = z80_sbc_16(*state.hl, *state.bc);
-                   state.t = 15;
                    break;
 
         /* LD (NN),BC */
         case 0x43: mmu_write_16(NN, *state.bc);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* NEG          */
         case 0x44: z80_neg();
-                   state.t = 8;
                    break;
 
         /* ADC  HL,BC   */
         case 0x4A: *state.hl = z80_adc_16(*state.hl, *state.bc);
-                   state.t = 15;
                    break;
 
         /* LD   BC,(NN) */
         case 0x4B: *state.bc = mmu_read_16(NN);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* SBC  HL,DE   */
         case 0x52: *state.hl = z80_sbc_16(*state.hl, *state.de);
-                   state.t = 15;
                    break;
 
         /* LD (NN),DE */
         case 0x53: mmu_write_16(NN, *state.de);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* ADC  HL,DE   */
         case 0x5A: *state.hl = z80_adc_16(*state.hl, *state.de);
-                   state.t = 15;
                    break;
 
         /* LD   DE,(NN) */
         case 0x5B: *state.de = mmu_read_16(NN);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* SBC  HL,HL   */
         case 0x62: *state.hl = z80_sbc_16(*state.hl, *state.hl);
-                   state.t = 15;
                    break;
 
         /* RRD          */
         case 0x67: z80_rrd();
-                   state.t = 18;
                    break;
 
         /* ADC  HL,HL */
         case 0x6A: *state.hl = z80_adc_16(*state.hl, *state.hl);
-                   state.t = 15;
                    break;
 
         /* RLD          */
         case 0x6F: z80_rld();
-                   state.t = 18;
                    break;
 
         /* SBC  HL,SP */
         case 0x72: *state.hl = z80_sbc_16(*state.hl, state.sp);
-                   state.t = 15;
                    break;
 
         /* LD (NN) SP */
         case 0x73: mmu_write_16(NN, state.sp);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* ADC  HL,SP */
         case 0x7A: *state.hl = z80_adc_16(*state.hl, state.sp);
-                   state.t = 15;
                    break;
 
         /* LD SP (NN) */
         case 0x7B: state.sp = mmu_read_16(NN);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* LDI        */
         case 0xA0: z80_ldi();
-                   state.t = 16;
                    break;
 
         /* CPI        */
         case 0xA1: z80_cpid(mmu_read(*state.hl), 1);
-                   state.t = 16;
                    break;
 
         /* LDD        */
         case 0xA8: z80_ldd();
-                   state.t = 16;
                    break;
 
         /* CPD        */
         case 0xA9: z80_cpid(mmu_read(*state.hl), -1);
-                   state.t = 16;
                    break;
 
         /* LDIR       */
-        case 0xB0: state.t = 0;
- 
-                   do
+        case 0xB0: do
                    {
                        z80_ldi(); 
-                       state.t += 17;
                    }
                    while (*state.bc != 0);
 
-                   state.t += 4;
 
                    break; 
 
         /* CPIR       */
         case 0xB1: state.flags.z = 0;
-                   state.t = 0;
 
                    /* loop until BC != 0 and z != 1 */
                    while (state.flags.z == 0 && *state.bc != 0)
-                   {
                        z80_cpid(mmu_read(*state.hl), 1);
-                       state.t += 21;
-                   }
-
-                   state.t += 16;
 
                    break;
 
         /* LDDR        */
-        case 0xB8: state.t = 0;
-
-                   do
+        case 0xB8: do
                    {
                        z80_ldd();
-                       state.t += 16;
                    }
                    while (*state.bc != 0);
-
-                   state.t += 4;
 
                    break;
 
         /* CPDR       */
         case 0xB9: state.flags.z = 0;
-                   state.t = 0;
 
                    /* loop until BC != 0 and z != 1 */
                    while (state.flags.z == 0 && *state.bc != 0)
-                   {
                        z80_cpid(mmu_read(*state.hl), -1);
-                       state.t += 21;
-                   }
                    
-                   state.t += 16;
-
                    break;
 
 //        default: printf("Unimplemented Z80 ED OP code: %02x\n", code);
@@ -2124,56 +1998,46 @@ int static __always_inline z80_ext_fd_execute()
     {
         /* ADD IY+BC      */
         case 0x09: *state.iy = z80_add_16(*state.iy, *state.bc);
-                   state.t = 15;
                    break;
 
         /* ADD IY+DE      */
         case 0x19: *state.iy = z80_add_16(*state.iy, *state.de);
-                   state.t = 15;
                    break;
 
         /* LD  IY,NN      */
         case 0x21: *state.iy = NN;
-                   state.t = 14;
                    b = 4;
                    break;
 
         /* LD  (NN),IY    */
         case 0x22: mmu_write_16(NN, *state.iy);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* INC IY         */
         case 0x23: *state.iy = *state.iy + 1;
-                   state.t = 10;
                    break;
 
         /* LD  IYH,N      */
         case 0x26: state.iyh = mmu_read(state.pc + 2);
-                   state.t = 7;
                    b = 3;
                    break;
 
         /* ADD IY+HL      */
         case 0x29: *state.iy = z80_add_16(*state.iy, *state.iy);
-                   state.t = 15;
                    break;
 
         /* LD  IY,(NN)    */
         case 0x2A: *state.iy = mmu_read_16(NN);
-                   state.t = 20;
                    b = 4;
                    break;
 
         /* DEC IY         */
         case 0x2B: (*state.iy)--; 
-                   state.t = 10;
                    break;
 
         /* LD  IYL,N      */
         case 0x2E: state.iyl = mmu_read(state.pc + 2);
-                   state.t = 7;
                    b = 3;
                    break;
 
@@ -2181,7 +2045,6 @@ int static __always_inline z80_ext_fd_execute()
         case 0x34: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d,
                        z80_inr(mmu_read(*state.iy + d)));
-                   state.t = 23;
                    b = 3;
                    break;
 
@@ -2194,316 +2057,262 @@ int static __always_inline z80_ext_fd_execute()
         /* LD (IY+d),N    */
         case 0x36: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, mmu_read(state.pc + 3));
-                   state.t = 19;
                    b = 4;
                    break;
 
         /* ADD IY+SP      */
         case 0x39: *state.iy = z80_add_16(*state.iy, state.sp);
-                   state.t = 15;
                    break;
 
         /* LD  B,(IY+d)   */
         case 0x46: d = mmu_read(state.pc + 2);
                    state.b = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  C,(IY+d)   */
         case 0x4E: d = mmu_read(state.pc + 2);
                    state.c = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  D,(IY+d)   */
         case 0x56: d = mmu_read(state.pc + 2);
                    state.d = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  E,(IY+d)   */
         case 0x5E: d = mmu_read(state.pc + 2);
                    state.e = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IYH, B     */
         case 0x60: state.iyh = state.b;
-                   state.t = 4;
                    break;
 
         /* LD  IYH, C     */
         case 0x61: state.iyh = state.c;
-                   state.t = 4;
                    break;
 
         /* LD  IYH, D     */
         case 0x62: state.iyh = state.d;
-                   state.t = 4;
                    break;
 
         /* LD  IYH, E     */
         case 0x63: state.iyh = state.e;
-                   state.t = 4;
                    break;
 
         /* LD  IYH, H     */
         case 0x64: state.iyh = state.h;
-                   state.t = 4;
                    break;
 
         /* LD  IYH, L     */
         case 0x65: state.iyh = state.l;
-                   state.t = 4;
                    break;
 
         /* LD  H,(IY+d)   */
         case 0x66: d = mmu_read(state.pc + 2);
                    state.h = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IYH, A     */
         case 0x67: state.iyh = state.a;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, C     */
         case 0x68: state.iyl = state.b;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, C     */
         case 0x69: state.iyl = state.c;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, D     */
         case 0x6A: state.iyl = state.d;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, E     */
         case 0x6B: state.iyl = state.e;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, H     */
         case 0x6C: state.iyl = state.iyh;
-                   state.t = 4;
                    break;
 
         /* LD  IYL, IYL   */
         case 0x6D: state.iyl = state.iyl;
-                   state.t = 4;
                    break;
 
         /* LD  L,(IY+d)   */
         case 0x6E: d = mmu_read(state.pc + 2);
                    state.l = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  IYL, A     */
         case 0x6F: state.iyl = state.a;
-                   state.t = 4;
                    break;
 
         /* MOV (IY+d), B  */
         case 0x70: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.b);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IY+d), C  */
         case 0x71: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.c);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IY+d), D  */
         case 0x72: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IY+d), E  */
         case 0x73: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.e);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IY+d), H  */
         case 0x74: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.h);
-                   state.t = 19;
                    b = 3; 
                    break;
 
         /* MOV (IY+d), L  */
         case 0x75: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.l);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* MOV (IY+d), L  */
         case 0x77: d = mmu_read(state.pc + 2);
                    mmu_write(*state.iy + d, state.a);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* LD  A,(IY+d)   */
         case 0x7E: d = mmu_read(state.pc + 2);
                    state.a = mmu_read(*state.iy + d);
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* ADD IYH        */
         case 0x84: z80_add(state.iyh);
-                   state.t = 4;
                    break;
 
         /* ADD IYL        */
         case 0x85: z80_add(state.iyl);
-                   state.t = 4;
                    break;
 
         /* ADD (IY+d)     */
         case 0x86: d = mmu_read(state.pc + 2);
                    z80_add(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* ADC  IYH      */
         case 0x8C: z80_adc(state.iyh);
-                   state.t = 4;
                    break;
 
         /* ADC  IYL      */
         case 0x8D: z80_adc(state.iyl);
-                   state.t = 4;
                    break;
 
         /* ADC (IY+d)    */
         case 0x8E: d = mmu_read(state.pc + 2);
                    z80_adc(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* SUB IYH        */
         case 0x94: z80_sub(state.iyh);
-                   state.t = 4;
                    break;
 
         /* SUB IYH        */
         case 0x95: z80_sub(state.iyl);
-                   state.t = 4;
                    break;
 
         /* SUB (IY+d)     */
         case 0x96: d = mmu_read(state.pc + 2);
                    z80_sub(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* SBC  IYH       */
         case 0x9C: z80_sbc(state.iyh);
-                   state.t = 4;
                    break;
 
         /* SBC  IYL       */
         case 0x9D: z80_sbc(state.iyl);
-                   state.t = 4;
                    break;
 
         /* SBC (IY+d)     */
         case 0x9E: d = mmu_read(state.pc + 2);
                    z80_sbc(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* ANA  IYH       */
         case 0xA4: z80_ana(state.iyh);
-                   state.t = 4;
                    break;
 
         /* ANA  IYL       */
         case 0xA5: z80_ana(state.iyl);
-                   state.t = 4;
                    break;
 
         /* ANA (IY+d)     */
         case 0xA6: d = mmu_read(state.pc + 2);
                    z80_ana(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* XRA  IYH       */
         case 0xAC: z80_xra(state.iyh);
-                   state.t = 4;
                    break;
 
         /* XRA  IYL       */
         case 0xAD: z80_xra(state.iyl);
-                   state.t = 4;
                    break;
 
         /* XRA (IY+d)     */
         case 0xAE: d = mmu_read(state.pc + 2);
                    z80_xra(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
         /* OR    IYH      */
         case 0xB4: z80_ora(state.iyh);
-                   state.t = 4; 
                    break;
 
         /* OR    IYL      */
         case 0xB5: z80_ora(state.iyl); 
-                   state.t = 4; 
                    break;
 
         /* ORA (IY+d)     */
         case 0xB6: d = mmu_read(state.pc + 2);
                    z80_ora(mmu_read(*state.iy + d));
-                   state.t = 19; 
                    b = 3;
                    break;
 
         /* CMP   IYH      */
         case 0xBC: z80_cmp(state.iyh); 
-                   state.t = 4;
                    break;
 
         /* CMP   IYL      */
         case 0xBD: z80_cmp(state.iyl);
-                   state.t = 4;
                    break;
 
         /* CMP (IY+d)     */
         case 0xBE: d = mmu_read(state.pc + 2);
                    z80_cmp(mmu_read(*state.iy + d));
-                   state.t = 19;
                    b = 3;
                    break;
 
@@ -2562,28 +2371,23 @@ int static __always_inline z80_ext_fd_execute()
 
                            }
 
-                           state.t = 23;
-
                            break;
 
                        /* BIT Family */
                        case 0x01: z80_bit(mmu_addr(*state.iy + d),
                                   (mmu_read(state.pc + 3) >> 3) & 0x07, d);
-                                  state.t = 20;
                                   break;
 
                        /* RES Family */
                        case 0x02: *regs_dst[reg] = 
                                   z80_res(mmu_addr(*state.iy + d),
                                       (mmu_read(state.pc + 3) >> 3) & 0x07);
-                                  state.t = 23;
                                   break;
 
                        /* SET Family */
                        case 0x03: *regs_dst[reg] = 
                                   z80_set(mmu_addr(*state.iy + d),
                                       (mmu_read(state.pc + 3) >> 3) & 0x07);
-                                  state.t = 23;
                                   break;
 
                    }
@@ -2594,20 +2398,17 @@ int static __always_inline z80_ext_fd_execute()
         /* POP   IY       */       
         case 0xE1: *state.iy = mmu_read_16(state.sp); 
                    state.sp += 2;
-                   state.t = 14;
                    break;
 
         /* PUSH  IY       */
         case 0xE5: mmu_write_16(state.sp - 2, *state.iy);
                    state.sp -= 2;
-                   state.t = 15;
                    break;
 
 //        default: printf("Unimplemented Z80 FD OP code: %02x\n", code);
 /*                 state.skip_cycle = 1;
                  b = 1; */
                  b = 1;
-                 state.t = 4;
     }
 
     return b;
@@ -2625,53 +2426,41 @@ int static __always_inline z80_execute(unsigned char code)
     switch (code)
     {
         /* NOP       */
-        case 0x00: state.t = 4; 
-                   break;                           
+        case 0x00: break;                           
 
         /* LXI  B    */
         case 0x01: *state.bc = ADDR;   
-                   state.t = 10;
                    b = 3;
                    break;
 
         /* STAX B    */
         case 0x02: mmu_write(*state.bc, state.a); 
-                   state.t = 7;
                    break;                          
 
         /* INX  B    */
         case 0x03: (*state.bc)++;                    
                    cycles_step(4);
-                   state.t = 6;
                    break;        
 
         /* INR  B    */
         case 0x04: state.b = z80_inr(state.b);                   
-                   state.t = 4;
                    break;   
 
         /* DCR  B    */
         case 0x05: state.b = z80_dcr(state.b);                     
-                   state.t = 4;
                    break;
 
         /* MVI  B    */
         case 0x06: state.b = mmu_read(state.pc + 1);  
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RLCA      */
         case 0x07: z80_rla(&state.a, 1);
-                   state.t = 4;
                    break;
 
         /* NOP       */
-        case 0x08: printf("NON SUPPORTAO 0x08\n");
-                   exit(1);
- 
-                   state.t = 4;
-                   break;                          
+        case 0x08: exit(1);
 
         /* DAD  B    */
         case 0x09: *state.hl = dad_16(*state.hl, *state.bc);    
@@ -2679,88 +2468,71 @@ int static __always_inline z80_execute(unsigned char code)
                    /* needs 4 more cycles */
                    cycles_step(4);
 
-                   state.t = 15;
                    break;
 
         /* LDAX B    */
         case 0x0A: state.a = mmu_read(*state.bc);          
-                   state.t = 7;
                    break;
 
         /* DCX  B    */
         case 0x0B: (*state.bc)--;
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  C    */
         case 0x0C: state.c = z80_inr(state.c);                 
-                   state.t = 4;
                    break;   
 
         /* DCR  C    */
         case 0x0D: state.c = z80_dcr(state.c);            
-                   state.t = 4;
                    break;   
 
         /* MVI  C    */
         case 0x0E: state.c = mmu_read(state.pc + 1); 
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RRC       */
         case 0x0F: z80_rra(&state.a, 1);       
-                   state.t = 4;
                    break;
 
         /* NOP       */
-        case 0x10: state.t = 4;
-                   printf("STOP? 0x10\n"); exit(1);
-                   break;                           
+        case 0x10: exit(1);
 
         /* LXI  D    */
         case 0x11: *state.de = ADDR;   
-                   state.t = 10;
                    b = 3;
                    break;
 
         /* STAX D    */
         case 0x12: mmu_write(*state.de, state.a);            
-                   state.t = 7;
                    break;
 
         /* INX  D    */
         case 0x13: (*state.de)++;
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  D    */
         case 0x14: state.d = z80_inr(state.d);               
-                   state.t = 4;
                    break;   
 
         /* DCR  D    */
         case 0x15: state.d = z80_dcr(state.d);              
-                   state.t = 4;
                    break;   
 
         /* MVI  D    */
         case 0x16: state.d = mmu_read(state.pc + 1);  
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RLA       */
         case 0x17: z80_rla(&state.a, 0);
-                   state.t = 4;
                    break;
 
         /* JR        */
         case 0x18: cycles_step(4);
                    state.pc += (char) mmu_read(state.pc + 1);
-                   state.t = 12;
                    b = 2;
                    break; 
 
@@ -2770,102 +2542,79 @@ int static __always_inline z80_execute(unsigned char code)
                    /* needs 4 more cycles */
                    cycles_step(4);
 
-                   state.t = 15;
                    break;
 
         /* LDAX D    */
         case 0x1A: state.a = mmu_read(*state.de);            
-                   state.t = 7;
                    break;
 
         /* DCX  D    */
         case 0x1B: (*state.de)--;
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  E    */
         case 0x1C: state.e = z80_inr(state.e);                  
-                   state.t = 4;
                    break;
 
         /* DCR  E    */
         case 0x1D: state.e = z80_dcr(state.e);                       
-                   state.t = 4;
                    break;
 
         /* MVI  E    */
         case 0x1E: state.e = mmu_read(state.pc + 1);   
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RRA       */
         case 0x1F: z80_rra(&state.a, 0);
-                   state.t = 4;
                    break;
 
         /* JRNZ       */
         case 0x20: cycles_step(4);
+
                    if (!state.flags.z)
-                   {
-                       state.t = 12;
                        state.pc += (char) mmu_read(state.pc + 1);
-                   }
-                   else
-                       state.t = 7;
 
                    b = 2;
                    break;
 
         /* LXI  H    */
         case 0x21: *state.hl = ADDR; 
-                   state.t = 10;
                    b = 3;
                    break;
 
         /* SHLD      */
         case 0x22: mmu_write_16(ADDR, *state.hl); 
-                   state.t = 16;
                    b = 3;
                    break;
 
         /* INX  H    */
         case 0x23: (*state.hl)++;
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  H    */
         case 0x24: state.h = z80_inr(state.h);                      
-                   state.t = 4;
                    break;
 
         /* DCR  H    */
         case 0x25: state.h = z80_dcr(state.h);                       
-                   state.t = 4;
                    break;
 
         /* MVI  H    */
         case 0x26: state.h = mmu_read(state.pc + 1);   
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* DAA       */
         case 0x27: z80_daa();
-                   state.t = 4;
                    break;                            
 
         /* JRZ       */
         case 0x28: cycles_step(4);
                    if (state.flags.z)
-                   {
-                       state.t = 12;
                        state.pc += (char) mmu_read(state.pc + 1);
-                   }
-                   else
-                       state.t = 7;
 
                    b = 2;
                    break;                           
@@ -2876,34 +2625,28 @@ int static __always_inline z80_execute(unsigned char code)
                    /* needs 4 more cycles */
                    cycles_step(4);
 
-                   state.t = 15;
                    break;
 
         /* LHLD      */
         case 0x2A: *state.hl = mmu_read_16(ADDR);    
-                   state.t = 16;
                    b = 3;
                    break;
 
         /* DCX  H    */
         case 0x2B: (*state.hl)--;
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  L    */
         case 0x2C: state.l = z80_inr(state.l);                       
-                   state.t = 4;
                    break;
 
         /* DCR  L    */
         case 0x2D: state.l = z80_dcr(state.l);                      
-                   state.t = 4;
                    break;
 
         /* MVI  L    */
         case 0x2E: state.l = mmu_read(state.pc + 1);  
-                   state.t = 7;
                    b = 2;
                    break;
 
@@ -2912,31 +2655,24 @@ int static __always_inline z80_execute(unsigned char code)
                    state.flags.ac = 1; 
                    state.flags.n  = 1; 
                    z80_set_flags_53(state.a);
-                   state.t = 4; 
                    break;
 
         /* JRNC      */
         case 0x30: cycles_step(4); 
+
                    if (!state.flags.cy)
-                   {
-                       state.t = 12;
                        state.pc += (char) mmu_read(state.pc + 1);
-                   }
-                   else
-                       state.t = 7;
 
                    b = 2;
                    break;                     
  
         /* LXI  SP   */
         case 0x31: state.sp = ADDR;
-                   state.t = 10;
                    b = 3;
                    break;
 
         /* STA       */
         case 0x32: mmu_write(ADDR, state.a);          
-                   state.t = 13;
                    b = 3;
                    break;
 
@@ -2979,34 +2715,28 @@ int static __always_inline z80_execute(unsigned char code)
                    /* needs 4 more cycles */
                    cycles_step(4);
 
-                   state.t = 15;
                    break;
 
         /* LDA       */
         case 0x3A: state.a = mmu_read(ADDR);        
-                   state.t = 13;
                    b = 3;
                    break;
 
         /* DCX  SP   */
         case 0x3B: state.sp--;                    
                    cycles_step(4);
-                   state.t = 6;
                    break;
 
         /* INR  A    */
         case 0x3C: state.a = z80_inr(state.a);                      
-                   state.t = 4;
                    break;
 
         /* DCR  A    */
         case 0x3D: state.a = z80_dcr(state.a);                
-                   state.t = 4;
                    break;
 
         /* MVI  A   */
         case 0x3E: state.a = mmu_read(state.pc + 1);   
-                   state.t = 7;
                    b = 2;
                    break;
 
@@ -3016,670 +2746,534 @@ int static __always_inline z80_execute(unsigned char code)
                    state.flags.n  = 0;
 
                    z80_set_flags_53(state.a);
-                   state.t = 4;
                    break;
 
         /* MOV  B,B  */
         case 0x40: state.b = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,C  */
         case 0x41: state.b = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,D  */
         case 0x42: state.b = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,E  */
         case 0x43: state.b = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,H  */
         case 0x44: state.b = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,L  */
         case 0x45: state.b = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  B,M  */
         case 0x46: state.b = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  B,A  */
         case 0x47: state.b = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,B  */
         case 0x48: state.c = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,C  */
         case 0x49: state.c = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,D  */
         case 0x4A: state.c = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,E  */
         case 0x4B: state.c = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,H  */
         case 0x4C: state.c = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,L  */
         case 0x4D: state.c = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  C,M  */
         case 0x4E: state.c = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  C,A  */
         case 0x4F: state.c = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,B  */
         case 0x50: state.d = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,C  */
         case 0x51: state.d = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,D  */
         case 0x52: state.d = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,E  */
         case 0x53: state.d = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,H  */
         case 0x54: state.d = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,L  */
         case 0x55: state.d = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  D,M  */
         case 0x56: state.d = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  D,A  */
         case 0x57: state.d = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,B  */
         case 0x58: state.e = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,C  */
         case 0x59: state.e = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,D  */
         case 0x5A: state.e = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,E  */
         case 0x5B: state.e = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,H  */
         case 0x5C: state.e = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,L  */
         case 0x5D: state.e = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  E,M  */
         case 0x5E: state.e = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  E,A  */
         case 0x5F: state.e = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,B  */
         case 0x60: state.h = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,C  */
         case 0x61: state.h = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,D  */
         case 0x62: state.h = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,E  */
         case 0x63: state.h = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,H  */
         case 0x64: state.h = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,L  */
         case 0x65: state.h = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  H,M  */
         case 0x66: state.h = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  H,A  */
         case 0x67: state.h = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,B  */
         case 0x68: state.l = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,C  */
         case 0x69: state.l = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,D  */
         case 0x6A: state.l = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,E  */
         case 0x6B: state.l = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,H  */
         case 0x6C: state.l = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,L  */
         case 0x6D: state.l = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  L,M  */
         case 0x6E: state.l = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  L,A  */
         case 0x6F: state.l = state.a; 
-                   state.t = 4;
                    break;  
 
         /* MOV  M,B  */
         case 0x70: mmu_write(*state.hl, state.b);
-                   state.t = 7;
                    break;
 
         /* MOV  M,C  */
         case 0x71: mmu_write(*state.hl, state.c);
-                   state.t = 7;
                    break;
 
         /* MOV  M,D  */
         case 0x72: mmu_write(*state.hl, state.d);
-                   state.t = 7;
                    break;
 
         /* MOV  M,E  */
         case 0x73: mmu_write(*state.hl, state.e);
-                   state.t = 7;
                    break;
 
         /* MOV  M,H  */
         case 0x74: mmu_write(*state.hl, state.h);
-                   state.t = 7;
                    break;
 
         /* MOV  M,L  */
         case 0x75: mmu_write(*state.hl, state.l);
-                   state.t = 7;
                    break;
 
         /* HLT       */
-        case 0x76: state.t = 4;
-                   return 1;
+        case 0x76: return 1;
 
         /* MOV  M,A  */
         case 0x77: mmu_write(*state.hl, state.a);
-                   state.t = 7;
                    break;
 
         /* MOV  A,B  */
         case 0x78: state.a = state.b; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,C  */
         case 0x79: state.a = state.c; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,D  */
         case 0x7A: state.a = state.d; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,E  */
         case 0x7B: state.a = state.e; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,H  */
         case 0x7C: state.a = state.h; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,L  */
         case 0x7D: state.a = state.l; 
-                   state.t = 4;
                    break;  
 
         /* MOV  A,M  */
         case 0x7E: state.a = mmu_read(*state.hl); 
-                   state.t = 7;
                    break;  
 
         /* MOV  A,A  */
         case 0x7F: state.a = state.a; 
-                   state.t = 4;
                    break;  
 
         /* ADD  B    */
         case 0x80: z80_add(state.b);
-                   state.t = 4;
                    break;   
 
         /* ADD  C    */
         case 0x81: z80_add(state.c);
-                   state.t = 4;
                    break;   
 
         /* ADD  D    */
         case 0x82: z80_add(state.d);
-                   state.t = 4;
                    break;   
 
         /* ADD  E    */
         case 0x83: z80_add(state.e);
-                   state.t = 4;
                    break;   
 
         /* ADD  H    */
         case 0x84: z80_add(state.h);
-                   state.t = 4;
                    break;   
 
         /* ADD  L    */
         case 0x85: z80_add(state.l);
-                   state.t = 4;
                    break;   
 
         /* ADD  M    */
         case 0x86: z80_add(mmu_read(*state.hl)); 
-                   state.t = 7;
                    break;   
 
         /* ADD  A    */
         case 0x87: z80_add(state.a);
-                   state.t = 4;
                    break;   
 
         /* ADC  B    */
         case 0x88: z80_adc(state.b); 
-                   state.t = 4;
                    break;   
 
         /* ADC  C    */
         case 0x89: z80_adc(state.c);
-                   state.t = 4;
                    break;   
 
         /* ADC  D    */
         case 0x8A: z80_adc(state.d);
-                   state.t = 4;
                    break;   
 
         /* ADC  E    */
         case 0x8B: z80_adc(state.e);
-                   state.t = 4;
                    break;   
 
         /* ADC  H    */
         case 0x8C: z80_adc(state.h); 
-                   state.t = 4;
                    break;   
 
         /* ADC  L    */
         case 0x8D: z80_adc(state.l);
-                   state.t = 4;
                    break;   
 
         /* ADC  M    */
         case 0x8E: z80_adc(mmu_read(*state.hl));
-                   state.t = 7;
                    break;   
 
         /* ADC  A    */
         case 0x8F: z80_adc(state.a);
-                   state.t = 4;
                    break;   
 
         /* SUB  B    */
         case 0x90: z80_sub(state.b);
-                   state.t = 4;
                    break;   
 
         /* SUB  C    */
         case 0x91: z80_sub(state.c);
-                   state.t = 4;
                    break;   
 
         /* SUB  D    */
         case 0x92: z80_sub(state.d);
-                   state.t = 4;
                    break;   
 
         /* SUB  E    */
         case 0x93: z80_sub(state.e);
-                   state.t = 4;
                    break;   
 
         /* SUB  H    */
         case 0x94: z80_sub(state.h);
-                   state.t = 4;
                    break;   
 
         /* SUB  L    */
         case 0x95: z80_sub(state.l);
-                   state.t = 4;
                    break;   
 
         /* SUB  M    */
         case 0x96: z80_sub(mmu_read(*state.hl));
-                   state.t = 7;
                    break;   
 
         /* SUB  A    */
         case 0x97: z80_sub(state.a);
-                   state.t = 4;
                    break;   
 
         /* SBC  B    */
         case 0x98: z80_sbc(state.b);
-                   state.t = 4;
                    break;   
 
         /* SBC  C    */
         case 0x99: z80_sbc(state.c);
-                   state.t = 4;
                    break;   
 
         /* SBC  D    */
         case 0x9a: z80_sbc(state.d);
-                   state.t = 4;
                    break;   
 
         /* SBC  E    */
         case 0x9b: z80_sbc(state.e);
-                   state.t = 4;
                    break;   
 
         /* SBC  H    */
         case 0x9c: z80_sbc(state.h);
-                   state.t = 4;
                    break;   
 
         /* SBC  L    */
         case 0x9d: z80_sbc(state.l);
-                   state.t = 4;
                    break;   
 
         /* SBC  M    */
         case 0x9E: z80_sbc(mmu_read(*state.hl)); 
-                   state.t = 7;
                    break;   
 
         /* SBC  A    */
         case 0x9f: z80_sbc(state.a); 
-                   state.t = 4;
                    break;   
 
         /* ANA  B    */
         case 0xA0: z80_ana(state.b);
-                   state.t = 4;
                    break;
 
         /* ANA  C    */
         case 0xA1: z80_ana(state.c);
-                   state.t = 4;
                    break;
 
         /* ANA  D    */ 
         case 0xA2: z80_ana(state.d);
-                   state.t = 4;
                    break;
 
         /* ANA  E    */
         case 0xA3: z80_ana(state.e);
-                   state.t = 4;
                    break;
 
         /* ANA  H    */
         case 0xA4: z80_ana(state.h);
-                   state.t = 4;
                    break;
 
         /* ANA  L    */
         case 0xA5: z80_ana(state.l);
-                   state.t = 4;
                    break;
 
         /* ANA  M    */
         case 0xA6: z80_ana(mmu_read(*state.hl));
-                   state.t = 7;
                    break;
 
         /* ANA  A    */
         case 0xA7: z80_ana(state.a);
-                   state.t = 4;
                    break;
 
         /* XRA  B    */
         case 0xA8: z80_xra(state.b);
-                   state.t = 4;
                    break;
 
         /* XRA  C    */
         case 0xA9: z80_xra(state.c);
-                   state.t = 4;
                    break;
 
         /* XRA  D    */
         case 0xAA: z80_xra(state.d);
-                   state.t = 4;
                    break;
 
         /* XRA  E    */
         case 0xAB: z80_xra(state.e);
-                   state.t = 4;
                    break;
 
         /* XRA  H    */
         case 0xAC: z80_xra(state.h);
-                   state.t = 4;
                    break;
 
         /* XRA  L    */
         case 0xAD: z80_xra(state.l);
-                   state.t = 4;
                    break;
 
         /* XRA  M    */
         case 0xAE: z80_xra(mmu_read(*state.hl));
-                   state.t = 7;
                    break;
 
         /* XRA  A    */
         case 0xAF: z80_xra(state.a);
-                   state.t = 4;
                    break;
 
         /* ORA  B    */
         case 0xB0: z80_ora(state.b);
-                   state.t = 4; 
                    break;
 
         /* ORA  C    */
         case 0xB1: z80_ora(state.c);
-                   state.t = 4; 
                    break;
 
         /* ORA  D    */ 
         case 0xB2: z80_ora(state.d);
-                   state.t = 4; 
                    break;
 
         /* ORA  E    */
         case 0xB3: z80_ora(state.e);
-                   state.t = 4; 
                    break;
 
         /* ORA  H    */
         case 0xB4: z80_ora(state.h);
-                   state.t = 4; 
                    break;
 
         /* ORA  L    */
         case 0xB5: z80_ora(state.l);
-                   state.t = 4; 
                    break;
 
         /* ORA  M    */
         case 0xB6: z80_ora(mmu_read(*state.hl));
-                   state.t = 0; 
                    break;
 
         /* ORA  A    */
         case 0xB7: z80_ora(state.a);
-                   state.t = 4; 
                    break;
 
         /* CMP  B    */
         case 0xB8: z80_cmp(state.b);
-                   state.t = 4;
                    break;
 
         /* CMP  C    */
         case 0xB9: z80_cmp(state.c);
-                   state.t = 4;
                    break;
 
         /* CMP  D    */
         case 0xBA: z80_cmp(state.d);
-                   state.t = 4;
                    break;
 
         /* CMP  E    */
         case 0xBB: z80_cmp(state.e);
-                   state.t = 4;
                    break;
 
         /* CMP  H    */
         case 0xBC: z80_cmp(state.h);
-                   state.t = 4;
                    break;
 
         /* CMP  L    */
         case 0xBD: z80_cmp(state.l);
-                   state.t = 4;
                    break;
 
         /* CMP  M    */
         case 0xBE: z80_cmp(mmu_read(*state.hl));
-                   state.t = 7;
                    break;
 
         /* CMP  A    */
         case 0xBF: z80_cmp(state.a);
-                   state.t = 4;
                    break;
 
         /* RNZ       */
         case 0xC0: cycles_step(4);
 
                    if (state.flags.z == 0)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* POP  B    */
         case 0xC1: *state.bc = mmu_read_16(state.sp); 
                    state.sp += 2;
-                   state.t = 10;
                    break;
 
         /* JNZ  addr */
-        case 0xC2: state.t = 10;
-
-                   /* this will add 8 cycles */
+        case 0xC2: /* this will add 8 cycles */
                    addr = ADDR;
 
                    if (state.flags.z == 0)
@@ -3700,7 +3294,6 @@ int static __always_inline z80_execute(unsigned char code)
                    /* add 4 cycles */
                    cycles_step(4);
 
-                   state.t = 10;
                    return 0;
 
         /* CNZ        */
@@ -3709,8 +3302,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.z == 0)
                        return z80_call(addr);
 
-                   state.t = 10;
-
                    b = 3;
                    break;
 
@@ -3718,40 +3309,30 @@ int static __always_inline z80_execute(unsigned char code)
         case 0xC5: cycles_step(4);
                    mmu_write_16(state.sp - 2, *state.bc);
                    state.sp -= 2;
-                   state.t = 11;
                    break;
 
         /* ADI       */
         case 0xC6: z80_add(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RST  0    */
-        case 0xC7: state.t = 11;
-                   state.pc++;
+        case 0xC7: state.pc++;
                    return z80_intr(0x0008 * 0);
                   
         /* RZ        */
         case 0xC8: cycles_step(4);
 
                    if (state.flags.z)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* RET       */
-        case 0xC9: state.t = 10;
-                   return z80_ret();
+        case 0xC9: return z80_ret();
 
         /* JZ        */
-        case 0xCA: state.t = 10;
-
-                   /* add 8 cycles */
+        case 0xCA: /* add 8 cycles */
                    addr = ADDR;
 
                    if (state.flags.z)
@@ -3776,7 +3357,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.z)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
  
@@ -3786,36 +3366,27 @@ int static __always_inline z80_execute(unsigned char code)
         /* ACI       */
         case 0xCE: z80_adc(mmu_read(state.pc + 1));
                    b = 2;
-                   state.t = 7;
                    break;
 
         /* RST  1    */
-        case 0xCF: state.t = 11; 
-                   state.pc++;
+        case 0xCF: state.pc++;
                    return z80_intr(0x0008 * 1);
                   
         /* RNC       */
         case 0xD0: cycles_step(4);
 
                    if (state.flags.cy == 0)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* POP  D    */
         case 0xD1: *state.de = mmu_read_16(state.sp); 
                    state.sp += 2;
-                   state.t = 10;
                    break;
 
         /* JNC       */
-        case 0xD2: state.t = 10;
-
-                   /* add 8 cycles */
+        case 0xD2: /* add 8 cycles */
                    addr = ADDR;
 
                    if (state.flags.cy == 0)
@@ -3840,7 +3411,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.cy == 0)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
 
@@ -3848,42 +3418,32 @@ int static __always_inline z80_execute(unsigned char code)
         case 0xD5: cycles_step(4); 
                    mmu_write_16(state.sp - 2, *state.de);
                    state.sp -= 2;
-                   state.t = 11;
                    break;
 
         /* SUI       */
         case 0xD6: z80_sub(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RST  2    */
-        case 0xD7: state.t = 11;
-                   state.pc++;
+        case 0xD7: state.pc++;
                    return z80_intr(0x0008 * 2);
 
         /* RC        */
         case 0xD8: cycles_step(4);
 
                    if (state.flags.cy)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* RETI      */
-        case 0xD9: state.t = 14;
-                   state.int_enable = 1;
+        case 0xD9: state.int_enable = 1;
                    return z80_ret(); 
                    break;
 
         /* JC        */
-        case 0xDA: state.t = 10;
-
-                   /* add 8 cycles */
+        case 0xDA: /* add 8 cycles */
                    addr = ADDR;
 
                    if (state.flags.cy)
@@ -3899,8 +3459,7 @@ int static __always_inline z80_execute(unsigned char code)
                    break;
 
         /* IN        */
-        case 0xDB: state.t = 11;
-                   b = 2;    /* every rom must override this behaviour */
+        case 0xDB: b = 2;    /* every rom must override this behaviour */
                    break;
 
         /* CC        */
@@ -3909,7 +3468,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.cy)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
 
@@ -3919,37 +3477,28 @@ int static __always_inline z80_execute(unsigned char code)
 
         /* SBI       */
         case 0xDE: z80_sbc(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RST  3    */
-        case 0xDF: state.t = 11;
-                   state.pc++;
+        case 0xDF: state.pc++;
                    return z80_intr(0x0008 * 3);
 
         /* RPO       */
         case 0xE0: cycles_step(4);
 
                    if (state.flags.p == 0)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* POP  H    */
         case 0xE1: *state.hl = mmu_read_16(state.sp); 
                    state.sp += 2;
-                   state.t = 10;
                    break;
     
         /* JPO       */
-        case 0xE2: state.t = 10;
-
-                   addr = ADDR;
+        case 0xE2: addr = ADDR;
 
                    if (state.flags.p == 0)
                    {
@@ -3977,7 +3526,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.p == 0)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
 
@@ -3985,30 +3533,23 @@ int static __always_inline z80_execute(unsigned char code)
         case 0xE5: cycles_step(4);
                    mmu_write_16(state.sp - 2, *state.hl);
                    state.sp -= 2;
-                   state.t = 11;
                    break;
 
         /* ANI       */
         case 0xE6: z80_ana(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;                      
                    break;
 
         /* RST  4    */
-        case 0xE7: state.t = 11;
-                   state.pc++;
+        case 0xE7: state.pc++;
                    return z80_intr(0x0008 * 4);
 
         /* RPE       */
         case 0xE8: cycles_step(4);
 
                    if (state.flags.p)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* PCHL      */
@@ -4016,9 +3557,7 @@ int static __always_inline z80_execute(unsigned char code)
                    return 0;
 
         /* JPE       */
-        case 0xEA: state.t = 10;
-
-                   addr = ADDR;
+        case 0xEA: addr = ADDR;
 
                    if (state.flags.p)
                    {
@@ -4038,7 +3577,6 @@ int static __always_inline z80_execute(unsigned char code)
                    xchg = state.l;
                    state.l = state.e;
                    state.e = xchg; 
-                   state.t = 4;
                    break;      
 
         /* CPE       */
@@ -4047,7 +3585,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.p)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
 
@@ -4057,25 +3594,19 @@ int static __always_inline z80_execute(unsigned char code)
 
         /* XRI       */
         case 0xEE: z80_xra(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RST  5    */
-        case 0xEF: state.t = 11;
-                   state.pc++;
+        case 0xEF: state.pc++;
                    return z80_intr(0x0008 * 5);
                   
         /* RP        */
         case 0xF0: cycles_step(4);
 
                    if (state.flags.s == 0)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* POP  PSW  */
@@ -4083,14 +3614,11 @@ int static __always_inline z80_execute(unsigned char code)
                    *p        = mmu_read(state.sp);
                    state.a   = mmu_read(state.sp + 1);
 
-                   state.t = 10;
                    state.sp += 2;
                    break;  
 
         /* JP        */
-        case 0xF2: state.t = 10;
-
-                   addr = ADDR;
+        case 0xF2: addr = ADDR;
 
                    if (state.flags.s == 0)
                    {
@@ -4105,7 +3633,6 @@ int static __always_inline z80_execute(unsigned char code)
       
         /* DI        */
         case 0xF3: state.int_enable = 0;
-                   state.t = 4;
                    break;
  
         /* CP        */
@@ -4114,7 +3641,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.p)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
  
@@ -4126,42 +3652,32 @@ int static __always_inline z80_execute(unsigned char code)
                    mmu_write(state.sp - 1, state.a);
                    mmu_write(state.sp - 2, *p);
                    state.sp -= 2;
-                   state.t = 11;
                    break;
 
         /* ORI       */
         case 0xF6: z80_ora(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;
                    break;
 
         /* RST  6    */
-        case 0xF7: state.t = 11;
-                   state.pc++;
+        case 0xF7: state.pc++;
                    return z80_intr(0x0008 * 6);
                   
         /* RM        */
         case 0xF8: cycles_step(4);
 
                    if (state.flags.s)
-                   {
-                       state.t = 11;
                        return z80_ret();
-                   }
  
-                   state.t = 5;
                    break;
 
         /* SPHL     */
         case 0xF9: cycles_step(4); 
                    state.sp = *state.hl;
-                   state.t = 6;
                    break;
 
         /* JM        */
-        case 0xFA: state.t = 10;
-
-                   addr = ADDR;
+        case 0xFA: addr = ADDR;
 
                    if (state.flags.s)
                    {
@@ -4176,7 +3692,6 @@ int static __always_inline z80_execute(unsigned char code)
 
         /* EI       */
         case 0xFB: state.int_enable = 1; 
-                   state.t = 4;
                    break;
 
         /* CM        */
@@ -4185,7 +3700,6 @@ int static __always_inline z80_execute(unsigned char code)
                    if (state.flags.s)
                        return z80_call(addr);
 
-                   state.t = 10;
                    b = 3;
                    break;
 
@@ -4195,18 +3709,14 @@ int static __always_inline z80_execute(unsigned char code)
 
         /* CPI      */
         case 0xFE: z80_cmp(mmu_read(state.pc + 1));
-                   state.t = 7;
                    b = 2;                      
                    break;
 
         /* RST  7    */
-        case 0xFF: state.t = 11;
-                   state.pc++;
+        case 0xFF: state.pc++;
                    return z80_intr(0x0008 * 7);
                   
-        default:
-//            printf("Unimplemented OP: %02x\n", code);
-            return 1;
+        default: return 1;
     }
 
     /* make the PC points to the next instruction */

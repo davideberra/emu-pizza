@@ -236,6 +236,22 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            banking = v;
                        }
 
+                       break;
+
+            /* MBC2 */
+            case 0x05:
+            case 0x06: 
+
+                       if (a >= 0x2000 && a <= 0x3FFF) 
+                       {
+                           /* use lower nibble to set current bank */
+                           uint8_t b = v & 0x0f;
+
+                           if (b != rom_current_bank)
+                                   memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+
+                           rom_current_bank = b;
+                       }
         }
 
         return; 

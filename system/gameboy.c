@@ -134,12 +134,10 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.flags.z  = 0;
                    state.flags.ac = 0;
 
-                   state.t = 4;
                    break;
 
         /* LD  (NN),SP     */
         case 0x08: mmu_write_16(ADDR, state.sp);
-                   state.t = 20;
                    b = 3;
                    break;
 
@@ -151,12 +149,10 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.flags.z  = 0;
                    state.flags.ac = 0;
 
-                   state.t = 4;
                    break;
 
         /* STOP */
         case 0x10: b = 2; 
-                   state.t = 4;
                    break;
 
         /* RLA       */
@@ -167,7 +163,6 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.flags.z  = 0;
                    state.flags.ac = 0;
 
-                   state.t = 4;
                    break;
 
         /* RRA       */
@@ -178,36 +173,30 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.flags.z  = 0;
                    state.flags.ac = 0;
 
-                   state.t = 4;
                    break;
 
         /* LDI (HL), A     */
         case 0x22: mmu_write(*state.hl, state.a);
                    (*state.hl)++;
-                   state.t = 8;
                    break;
 
         /* DAA       */
         case 0x27: gameboy_z80_daa(); 
-                   state.t = 4;
                    break;
 
         /* LDI  A,(HL)     */ 
         case 0x2A: state.a = mmu_read(*state.hl);
                    (*state.hl)++;
-                   state.t = 8;
                    break;
 
         /* LDD (HL), A     */
         case 0x32: mmu_write(*state.hl, state.a);
                    (*state.hl)--;
-                   state.t = 8;
                    break;
 
         /* LDD  A,(HL)     */ 
         case 0x3A: state.a = mmu_read(*state.hl);
                    (*state.hl)--;
-                   state.t = 8;
                    break;
 
         /* CCF      */
@@ -215,22 +204,18 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    state.flags.cy = !state.flags.cy;
                    state.flags.n  = 0;
 
-                   state.t = 4;
                    break;
 
         /* not present on Gameboy Z80 */
-        case 0xD3: 
-                   break;
+        case 0xD3: break;
 
         /* RETI            */
         case 0xD9: state.int_enable = 1;
-                   state.t = 16;
                    return z80_ret();
 
         /* not present on Gameboy Z80 */
         case 0xDB:
-        case 0xDD:
-                   break;
+        case 0xDD: break;
 
         /* LD   (FF00+N),A */
         case 0xE0: mmu_write(0xFF00 + mmu_read(state.pc + 1), state.a);
@@ -243,8 +228,7 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 
         /* not present on Gameboy Z80 */
         case 0xE3:
-        case 0xE4:
-                   break;
+        case 0xE4: break;
 
         /* ADD  SP,dd      */
         case 0xE8: byte = mmu_read(state.pc + 1);
@@ -276,8 +260,7 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         /* not present on Gameboy Z80 */
         case 0xEB:
         case 0xEC:
-        case 0xED:
-                   break;
+        case 0xED: break;
 
         /* LD  A,(FF00+N) */
         case 0xF0: state.a = mmu_read(0xFF00 + mmu_read(state.pc + 1));
@@ -289,13 +272,10 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                    break;
 
         /* not present on Gameboy Z80 */
-        case 0xF4: 
-                   break;
+        case 0xF4: break;
 
         /* LD  HL,SP+dd   */
-        case 0xF8: // *state.hl = state.sp + ((char) mmu_read(state.pc + 1));
-
-                   byte = mmu_read(state.pc + 1);
+        case 0xF8: byte = mmu_read(state.pc + 1);
                    byte2 = (uint8_t) (state.sp & 0x00ff);
                    result = byte2 + byte;
 
@@ -323,8 +303,7 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 
         /* not present on Gameboy Z80 */
         case 0xFC: 
-        case 0xFD: 
-                   break;
+        case 0xFD: break;
 
         case 0xCB: /* don't add cycles! it's just a test to know if it's a GB OP */
                    byte = mmu_read_no_cyc(state.pc + 1);
@@ -379,7 +358,6 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
                        case 0x36: byte = mmu_read(*state.hl);
                                   mmu_write(*state.hl, ((byte & 0xf0) >> 4) | 
                                                        ((byte & 0x0f) << 4));
-                                  state.t = 16;
                                   break;
 
                        /* SWAP A */ 
