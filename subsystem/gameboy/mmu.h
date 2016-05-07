@@ -53,10 +53,11 @@ uint8_t roms;
 uint8_t memory[65536];
 
 /* cartridge memory (max 2MB) */
-uint8_t cart_memory[2 << 21];
+uint8_t cart_memory[1 << 20];
 
 /* RAM memory area */
 uint8_t *ram;
+uint32_t ram_sz;
 
 /* current bank in case of MBC controller */
 uint8_t rom_current_bank = 1;
@@ -71,6 +72,7 @@ void static mmu_init(uint8_t c, uint8_t rn)
     rom_current_bank = 0x01;
     ram_current_bank = 0x01;
 
+    /* save carttype and qty of ROM blocks */
     carttype = c;
     roms = rn;
 }
@@ -78,6 +80,8 @@ void static mmu_init(uint8_t c, uint8_t rn)
 /* init (alloc) system state.memory */
 void static mmu_init_ram(uint32_t c)
 {
+    ram_sz = c;
+
     ram = malloc(c);
 
     bzero(ram, c);
@@ -102,11 +106,7 @@ void static mmu_load_cartridge(uint8_t *data, size_t sz)
 /* move 8 bit from s to d */
 void static __always_inline mmu_move(uint16_t d, uint16_t s)
 {
-//    cycles_step(8);
-
     mmu_write(d, mmu_read(s));
-
-//    memory[d] = memory[s];
 }
 
 /* return absolute memory address */
@@ -184,7 +184,11 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 
                            /* filter result to get a value < max rom number */
                            // b &= filter;
- 
+
+                           /* 0x00 is not valid, switch it to 0x01 */
+                           if (b == 0x00)
+                               b = 0x01;
+                 
                            if (b != rom_current_bank)
                            {
                                 /* copy! */
@@ -291,7 +295,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     /* LCD turned on/off? */
     if (a == 0xFF40)
     {
-        if ((v ^ memory[0xFF40]) & 0x01)
+        if ((v ^ memory[0xFF40]) & 0x80)
             gpu_toggle(v);
     }
 
@@ -364,6 +368,48 @@ void static __always_inline mmu_write_16(uint16_t a, uint16_t v)
 
     /* 16 bit write = +8 cycles */
     cycles_step(8);
+}
+
+void mmu_save_ram(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (carttype == 0x03 || carttype == 0x06)
+    {
+        FILE *fp = fopen(fn, "w+");
+
+        if (fp == NULL)
+        {
+            printf("Error dumping RAM\n");
+            return;
+        } 
+
+        if (ram_sz <= 0x2000)
+        {
+            /* no need to put togheter pieces of ram banks */
+            fwrite(&memory[0xA000], ram_sz, 1, fp);
+        }
+    }
+}
+
+void mmu_restore_ram(char *fn)
+{   
+    /* save only if cartridge got a battery */
+    if (carttype == 0x03 || carttype == 0x06)
+    {
+        FILE *fp = fopen(fn, "r+");
+
+        if (fp == NULL)
+        {
+            printf("Error restoring RAM\n");
+            return;
+        }
+
+        if (ram_sz <= 0x2000)
+        {
+            /* no need to put togheter pieces of ram banks */
+            fread(&memory[0xA000], ram_sz, 1, fp);
+        }
+    } 
 }
 
 #endif

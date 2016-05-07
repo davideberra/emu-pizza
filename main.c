@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     else if (sz == 8704)
         exercize_z80_start(rom, sz);
     else
-        gameboy_start(rom, sz);
+        gameboy_start(argv[1], rom, sz);
 
     return 0;
 }

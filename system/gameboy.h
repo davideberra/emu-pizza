@@ -24,6 +24,6 @@
 #include <stdint.h>
 
 /* prototypes */
-void gameboy_start(uint8_t *rom, size_t size);
+void gameboy_start(char *fn, uint8_t *rom, size_t size);
 
 #endif

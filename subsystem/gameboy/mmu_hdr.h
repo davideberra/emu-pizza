@@ -30,5 +30,7 @@ void static __always_inline           mmu_write_no_cyc(uint16_t a, uint8_t v);
 void static __always_inline           mmu_write(uint16_t a, uint8_t v);
 unsigned int static __always_inline   mmu_read_16(uint16_t a);
 void static __always_inline           mmu_write_16(uint16_t a, uint16_t v);
+void                                  mmu_save_ram(char *fn);
+void                                  mmu_restore_ram(char *fn);
 
 #endif

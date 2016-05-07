@@ -390,10 +390,11 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 }
 
 /* entry point for Gameboy emulaton */
-void gameboy_start(uint8_t *rom, size_t size)
+void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 {
     uint8_t  op;
     uint8_t  byte;
+    char     file_sav[1024];
     int      i;
 
     /* init z80 */
@@ -412,7 +413,7 @@ void gameboy_start(uint8_t *rom, size_t size)
         case 0x02: printf("ROM + MBC1 + RAM\n"); break;
         case 0x03: printf("ROM + MBC1 + RAM + BATTERY\n"); break;
         case 0x05: printf("ROM + MBC2\n"); break;
-        case 0x06: printf("ROM + MBC2 + BATTERY\n"); break;
+        case 0x06: mmu_init_ram(512); printf("ROM + MBC2 + BATTERY\n"); break;
     }
 
     /* title */
@@ -450,9 +451,9 @@ void gameboy_start(uint8_t *rom, size_t size)
     switch (byte)
     {
         case 0x00: printf("NO RAM\n"); break;
-        case 0x01: printf("2 kB\n"); break;
-        case 0x02: printf("8 kB\n"); break;
-        case 0x03: mmu_init_ram(2 << 15); printf("32 kB\n"); break;
+        case 0x01: mmu_init_ram(1 << 11); printf("2 kB\n"); break;
+        case 0x02: mmu_init_ram(1 << 13); printf("8 kB\n"); break;
+        case 0x03: mmu_init_ram(1 << 15); printf("32 kB\n"); break;
         case 0x04: printf("128 kB\n"); break;
         case 0x05: printf("64 kB\n"); break;
     }
@@ -503,6 +504,12 @@ void gameboy_start(uint8_t *rom, size_t size)
     int_e = mmu_addr(0xFFFF);
     int_f = mmu_addr(0xFF0F);
 
+    /* build file.sav */
+    snprintf(file_sav, sizeof(file_sav), "%s.sav", file_gb);
+
+    /* restore saved RAM if it's the case */
+    mmu_restore_ram(file_sav);
+
     /* start from 0x0000 and execute BIOS */
     while (0 && state.pc != 0x100)
     {
@@ -547,7 +554,7 @@ void gameboy_start(uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF40, 0x91);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
-    mmu_write_no_cyc(0xFF44, 0x90);  
+    mmu_write_no_cyc(0xFF44, 0x00);  
     mmu_write_no_cyc(0xFF45, 0x00); 
     mmu_write_no_cyc(0xFF47, 0xFC); 
     mmu_write_no_cyc(0xFF48, 0xFF); 
@@ -570,7 +577,10 @@ void gameboy_start(uint8_t *rom, size_t size)
     state.sp = 0xFFFE;
     *state.f = 0x90;
  
-    /* running stuff! */
+    /* run stuff!                                                          */
+    /* mechanism is simple.                                                */
+    /* 1) execute instruction,2) update cycles counter 3) check interrupts */
+    /* and repeat forever                                                  */
     while (!quit)
     {
         /* get op */
@@ -586,7 +596,8 @@ void gameboy_start(uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x 0000: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0x0000)); 
+ printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %04x FF41: %04x FF44: %04x\n", state.a, *state.bc, *state.de, *state.hl, 
+    mmu_read_no_cyc(0xff40), mmu_read_no_cyc(0xff41), mmu_read_no_cyc(0xff44)); 
 */
 
 // mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));
@@ -685,6 +696,8 @@ void gameboy_start(uint8_t *rom, size_t size)
             }
         } 
     }
+
+    mmu_save_ram(file_sav);
 
     return; 
 }

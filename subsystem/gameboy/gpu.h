@@ -66,7 +66,8 @@ char              gpu_timer_triggered = 0;
 
 /* prototype for timer handler */
 void gpu_timer_handler(int sig, siginfo_t *si, void *uc);
-void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
+void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, 
+                                                 uint8_t sprites_size,
                                                  uint8_t line);
 
 
@@ -147,7 +148,7 @@ void static gpu_init()
 void static gpu_toggle(uint8_t state)
 {
     /* from off to on */
-    if (state & 0x01)
+    if (state & 0x80)
     {
         /* LCD turned on */
     }
@@ -156,7 +157,7 @@ void static gpu_toggle(uint8_t state)
         /* LCD turned off - reset stuff */
         gpu_state.clocks = 0;
         *gpu_state.ly = 0;
-        (*gpu_state.lcd_status).mode = 0x02;
+        (*gpu_state.lcd_status).mode = 0x00;
 
         /* first giro */
         gpu_step(4);
@@ -182,11 +183,13 @@ void static gpu_draw_frame()
         for (x=0; x<160; x++)
         { 
             for (p=0; p<magnify_rate; p++)
-                line[p + (x * magnify_rate)] = gpu_state.frame_buffer[x + (y * 160)];
+                line[p + (x * magnify_rate)] = 
+                    gpu_state.frame_buffer[x + (y * 160)];
         }
 
         for (p=0; p<magnify_rate; p++)
-            memcpy(&pixel[((y * magnify_rate) + p) * 160 * magnify_rate], line, sizeof(uint32_t) * 160 * magnify_rate);
+            memcpy(&pixel[((y * magnify_rate) + p) * 160 * magnify_rate], 
+                   line, sizeof(uint32_t) * 160 * magnify_rate);
     } 
 
     free(line);
@@ -217,7 +220,8 @@ void static __always_inline gpu_draw_line(uint8_t line)
     if ((*gpu_state.lcd_ctrl).bg)
     {
         /* get tile map offset */
-        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
+        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 
+                             0x9C00 : 0x9800);
 
         if ((*gpu_state.lcd_ctrl).bg_tiles)
              tiles_addr = 0x8000;
@@ -258,9 +262,9 @@ void static __always_inline gpu_draw_line(uint8_t line)
             /* calc tile data pointer */
             int16_t tile_ptr = (tile_n * 16) + (tile_subline * 2);
 
-            /* pixels are handled in a super shitty way */
+            /* pixels are handled in a super shitty way                  */
             /* bit 0 of the pixel is taken from even position tile bytes */
-            /* bit 1 of the pixel is taken from odd position tile bytes */
+            /* bit 1 of the pixel is taken from odd position tile bytes  */
 
             uint8_t  pxa[8];
 
@@ -272,7 +276,8 @@ void static __always_inline gpu_draw_line(uint8_t line)
                           ((*(tiles + tile_ptr + 1) & shft) ? 2 : 0);
             }
 
-            /* particular cases for first and last tile (could be shown just a part) */
+            /* particular cases for first and last tile */ 
+            /* (could be shown just a part)             */
             if (t == 0)
             {
                 px_start = (*(gpu_state.scroll_x) % 8);
@@ -281,7 +286,8 @@ void static __always_inline gpu_draw_line(uint8_t line)
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = palette[pxa[i]];
+                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
+                        palette[pxa[i]];
 
             }
             else if (t == 20)
@@ -290,7 +296,8 @@ void static __always_inline gpu_draw_line(uint8_t line)
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = palette[pxa[i + (8 - px_drawn)]];
+                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
+                        palette[pxa[i + (8 - px_drawn)]];
             } 
             else
             {
@@ -330,7 +337,8 @@ void static __always_inline gpu_draw_line(uint8_t line)
                 oam[i].x < 168 && oam[i].y < 152 && 
                 line < (oam[i].y + h - 16) &&
                 line >= (oam[i].y - 16))
-                gpu_draw_sprite_line(&oam[i], (*gpu_state.lcd_ctrl).sprites_size, line);
+                gpu_draw_sprite_line(&oam[i], 
+                                     (*gpu_state.lcd_ctrl).sprites_size, line);
         }
     }
 
@@ -761,7 +769,7 @@ void static __always_inline gpu_step(uint8_t t)
     }
 }
 
-/* callback for timer events (60 timer per second) */
+/* callback for timer events (60 times per second) */
 void gpu_timer_handler(int sig, siginfo_t *si, void *uc)
 {
     gpu_timer_triggered = 1;
