@@ -103,13 +103,36 @@ typedef struct channel_three_nr31_s
 
 } channel_three_nr31_t;
 
+typedef struct channel_three_nr32_s
+{
+    uint8_t spare:5;
+    uint8_t volume_code:2;
+    uint8_t spare2:1;
+
+} channel_three_nr32_t;
+
+typedef struct channel_three_nr33_s
+{
+    uint8_t frequency_lsb;
+
+} channel_three_nr33_t;
+
+typedef struct channel_three_nr24_s
+{
+    uint8_t frequency_msb:3;
+    uint8_t spare:3;
+    uint8_t length_enable:1;
+    uint8_t trigger:1;
+
+} channel_three_nr34_t;
+
 
 typedef struct nr52_s
 {
     
 } nr52_t;
 
-typedef struct channel_s
+typedef struct channel_square_s
 {
     uint8_t  active;
     uint8_t  duty;
@@ -123,26 +146,49 @@ typedef struct channel_s
     int16_t  sweep_active;
     int16_t  sweep_cnt;
     int16_t  volume;
+    uint32_t sweep_shadow_frequency;
 
-} channel_t;
+} channel_square_t;
+
+typedef struct channel_wave_s
+{
+    uint8_t  active;
+    uint8_t  index;
+    int16_t  sample;
+    int16_t  wave[32];
+    int16_t  cycles;
+    int16_t  cycles_cnt;
+    uint32_t frequency;
+    uint32_t length;
+
+} channel_wave_t;
 
 typedef struct sound_s
 {
-    channel_one_nr10_t *channel_one_nr10;
-    channel_one_nr11_t *channel_one_nr11;
-    channel_one_nr12_t *channel_one_nr12;
-    channel_one_nr13_t *channel_one_nr13;
-    channel_one_nr14_t *channel_one_nr14;
+    channel_one_nr10_t   *channel_one_nr10;
+    channel_one_nr11_t   *channel_one_nr11;
+    channel_one_nr12_t   *channel_one_nr12;
+    channel_one_nr13_t   *channel_one_nr13;
+    channel_one_nr14_t   *channel_one_nr14;
 
-    channel_two_nr21_t *channel_two_nr21;
-    channel_two_nr22_t *channel_two_nr22;
-    channel_two_nr23_t *channel_two_nr23;
-    channel_two_nr24_t *channel_two_nr24;
+    channel_two_nr21_t   *channel_two_nr21;
+    channel_two_nr22_t   *channel_two_nr22;
+    channel_two_nr23_t   *channel_two_nr23;
+    channel_two_nr24_t   *channel_two_nr24;
 
-    channel_t           channel_one;    
-    channel_t           channel_two;    
+    channel_three_nr30_t *channel_three_nr30;
+    channel_three_nr31_t *channel_three_nr31;
+    channel_three_nr32_t *channel_three_nr32;
+    channel_three_nr33_t *channel_three_nr33;
+    channel_three_nr34_t *channel_three_nr34;
 
-    uint32_t            fs_cycles;
+    uint8_t              *wave_table;
+
+    channel_square_t      channel_one;    
+    channel_square_t      channel_two;    
+    channel_wave_t        channel_three;
+
+    uint32_t              fs_cycles;
 
 } sound_t;
 

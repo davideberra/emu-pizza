@@ -26,10 +26,7 @@
 /* structs emulating z80 registers and flags */
 typedef struct z80_flags_s
 {
-    uint8_t  s:1;    /* first 4 bit mantained for compatibility */
-    uint8_t  p:1;
-    uint8_t  u5:1;
-    uint8_t  u3:1;
+    uint8_t  spare:4;   
     uint8_t  cy:1;
     uint8_t  ac:1;
     uint8_t  n:1;
@@ -40,10 +37,6 @@ typedef struct z80_flags_s
 /* flags offsets */
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
-    #define FLAG_OFFSET_S  0
-    #define FLAG_OFFSET_P  1
-    #define FLAG_OFFSET_U5 2
-    #define FLAG_OFFSET_U3 3
     #define FLAG_OFFSET_CY 4
     #define FLAG_OFFSET_AC 5
     #define FLAG_OFFSET_N  6

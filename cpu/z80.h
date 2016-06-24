@@ -1324,7 +1324,7 @@ int static __always_inline z80_ext_cb_execute()
 
                    /* accessing HL needs more T-cycles */
                    if (reg == 0x06)
-                       cycles_step(4);
+                        cycles_step(4);
 
                    /* accessing HL needs more T-cycles */
 //                   if (reg == 0x06)

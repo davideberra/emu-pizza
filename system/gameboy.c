@@ -23,6 +23,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "subsystem/gameboy/timer.h"
+#include "subsystem/gameboy/sound.h"
 #include "subsystem/gameboy/mmu.h"
 #include "subsystem/gameboy/cycles.h"
 #include "subsystem/gameboy/gpu.h"
@@ -31,7 +32,8 @@
 #include "subsystem/gameboy/serial.h"
 #include "cpu/z80_gameboy_regs.h"
 // #include "cpu/z80_gameboy_mmu.h"
-#include "cpu/z80.h"
+// #include "cpu/z80.h"
+#include "cpu/z80_gameboy.h"
 
 /* Gameboy runs on z80 CPU, so let's instanciate its state struct */
 // z80_state_t *z80_state;
@@ -305,7 +307,8 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
         case 0xFC: 
         case 0xFD: break;
 
-        case 0xCB: /* don't add cycles! it's just a test to know if it's a GB OP */
+        case 0xCB: return 1;
+                   /* don't add cycles! it's just a test to know if it's a GB OP */
                    byte = mmu_read_no_cyc(state.pc + 1);
 
                    if ((byte & 0xf8) != 0x30)
@@ -554,7 +557,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF40, 0x91);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
-    mmu_write_no_cyc(0xFF44, 0x00);  
+    mmu_write_no_cyc(0xFF44, 0x90);  
     mmu_write_no_cyc(0xFF45, 0x00); 
     mmu_write_no_cyc(0xFF47, 0xFC); 
     mmu_write_no_cyc(0xFF48, 0xFF); 
@@ -565,8 +568,9 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 
     mmu_write_no_cyc(0xC000, 0x08);
 
-    mmu_write_no_cyc(0xFFFE, 0x69);
-    state.a = 0x01;
+    mmu_write_no_cyc(0xFFFE, 0x0B);
+
+    state.a = 0x11;
     state.b = 0x00;
     state.c = 0x13;
     state.d = 0x00;
@@ -577,6 +581,13 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     state.sp = 0xFFFE;
     *state.f = 0x90;
  
+    /* init sound (this will start audio thread) */
+    sound_init();
+
+    /* init cycles syncronizer */
+    cycles_init();
+
+         *state.f &= 0xf0;
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
     /* 1) execute instruction,2) update cycles counter 3) check interrupts */
@@ -596,9 +607,12 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %04x FF41: %04x FF44: %04x\n", state.a, *state.bc, *state.de, *state.hl, 
-    mmu_read_no_cyc(0xff40), mmu_read_no_cyc(0xff41), mmu_read_no_cyc(0xff44)); 
+ printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, *state.de, *state.hl);
 */
+
+// printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %04x FF41: %04x FF44: %04x\n", state.a, *state.bc, *state.de, *state.hl, 
+//    mmu_read_no_cyc(0xff40), mmu_read_no_cyc(0xff41), mmu_read_no_cyc(0xff44)); 
+
 
 // mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));
 
@@ -609,7 +623,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 		// continue;
 		
         /* override classic Z80 instruction with GB Z80 version */
-        if (gameboy_z80_execute(op) != 0)
+        // if (gameboy_z80_execute(op) != 0)
             z80_execute(op);
 
         /* keep low bits always set to zero */
@@ -684,7 +698,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
         }
 
         /* aaaaaaaaaaaaaand finally, check for SDL events */
-        SDL_Event e;
+  /*      SDL_Event e;
 
         while (SDL_PollEvent(&e))
         {
@@ -694,10 +708,13 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
                     quit = 1;
                     break;
             }
-        } 
+        }  */
     }
 
     mmu_save_ram(file_sav);
 
+    /* terminate all the stuff */
+    sound_term();
+ 
     return; 
 }

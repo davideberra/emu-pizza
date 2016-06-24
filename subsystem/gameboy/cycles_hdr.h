@@ -22,6 +22,12 @@
 
 #include <stdint.h>
 
+/* ticks counter */
+uint32_t          cycles_cnt = 0;
+
+/* CPU clock */
+uint32_t          cycles_clock = 4194304;
+
 /* prototypes */
 void static __always_inline cycles_step(uint8_t s);
 

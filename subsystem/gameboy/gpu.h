@@ -20,6 +20,7 @@
 #ifndef __GPU__
 #define __GPU__
 
+#include <errno.h>
 #include <SDL2/SDL.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -52,26 +53,14 @@ static SDL_Surface *screenSurface = NULL;
 /* pointer to interrupt flags (handy) */
 interrupts_flags_t *gpu_if;
 
-/* timer */
-struct itimerspec gpu_timer;
-struct sigevent   te;
-struct sigaction  sa;
-timer_t           gpu_timer_id = 0;
+/* internal functions prototypes */
+void static gpu_draw_sprite_line(gpu_oam_t *oam, 
+                                 uint8_t sprites_size,
+                                 uint8_t line);
 
-/* semaphore */
-sem_t             gpu_sem;
+/* as the name says.... */
+int gpu_magnify_rate = 3;
 
-/* boolean for timer trigger */
-char              gpu_timer_triggered = 0;
-
-/* prototype for timer handler */
-void gpu_timer_handler(int sig, siginfo_t *si, void *uc);
-void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, 
-                                                 uint8_t sprites_size,
-                                                 uint8_t line);
-
-
-int magnify_rate = 2;
 
 /* init GPU states */
 void static gpu_init()
@@ -88,20 +77,11 @@ void static gpu_init()
     window = SDL_CreateWindow("Emu Pizza - Gameboy",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
-                              160 * magnify_rate, 144 * magnify_rate,
+                              160 * gpu_magnify_rate, 144 * gpu_magnify_rate,
                               SDL_WINDOW_SHOWN);
 
     /* get window surface */
-    // windowSurface = SDL_GetWindowSurface(window);
     screenSurface = SDL_GetWindowSurface(window);
-
-    /* create a new screen surface (fixed 160x144 pixels) */
-/*    screenSurface = SDL_CreateRGBSurface(0, 160, 144, windowSurface->format->BitsPerPixel, 
-                                         windowSurface->format->Rmask,
-                                         windowSurface->format->Gmask,
-                                         windowSurface->format->Bmask,
-                                         windowSurface->format->Amask);
-*/
 
     /* make gpu field points to the related memory area */
     gpu_state.lcd_ctrl   = mmu_addr(0xFF40);
@@ -115,33 +95,8 @@ void static gpu_init()
     gpu_if               = mmu_addr(0xFF0F);
     
     /* start with state 0x02 */
-    (*gpu_state.lcd_status).mode = 0x02;
-
-    /* init semaphore for 60hz sync */
-    sem_init(&gpu_sem, 0, 0);
-
-    /* prepare timer to emulate video refresh interrupts */
-    sa.sa_flags = SA_SIGINFO;
-    sa.sa_sigaction = gpu_timer_handler;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGRTMIN, &sa, NULL) == -1)
-        return;
-    bzero(&te, sizeof(struct sigevent)); 
-
-    /* set and enable alarm */
-    te.sigev_notify = SIGEV_SIGNAL;
-    te.sigev_signo = SIGRTMIN;
-    te.sigev_value.sival_ptr = &gpu_timer_id;
-    timer_create(CLOCK_REALTIME, &te, &gpu_timer_id); 
-
-    /* initialize 60 hits per seconds timer */
-    gpu_timer.it_value.tv_sec = 1;
-    gpu_timer.it_value.tv_nsec = 0;
-    gpu_timer.it_interval.tv_sec = 0;
-    gpu_timer.it_interval.tv_nsec = 1000000000 / 60; 
-
-    /* start timer */
-    timer_settime(gpu_timer_id, 0, &gpu_timer, NULL);
+    (*gpu_state.lcd_status).mode = 0x01;
+    gpu_state.clocks = 200;
 }
 
 /* turn on/off lcd */
@@ -151,6 +106,7 @@ void static gpu_toggle(uint8_t state)
     if (state & 0x80)
     {
         /* LCD turned on */
+        // printf("ACCESO\n");
     }
     else
     {
@@ -160,7 +116,7 @@ void static gpu_toggle(uint8_t state)
         (*gpu_state.lcd_status).mode = 0x00;
 
         /* first giro */
-        gpu_step(4);
+        // gpu_step(4);
     }
 
 } 
@@ -172,36 +128,36 @@ void static gpu_draw_frame()
 
     uint32_t *pixel = screenSurface->pixels;
    
-    uint32_t *line = malloc(sizeof(uint32_t) * 160 * magnify_rate);
-
-    /* just copy GPU frame buffer into SDL frame buffer */
-    //memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
-
     /* magnify! */
-    for (y=0; y<144; y++)
+    if (gpu_magnify_rate > 1)
     {
-        for (x=0; x<160; x++)
-        { 
-            for (p=0; p<magnify_rate; p++)
-                line[p + (x * magnify_rate)] = 
-                    gpu_state.frame_buffer[x + (y * 160)];
-        }
+        uint32_t *line = malloc(sizeof(uint32_t) * 160 * gpu_magnify_rate);
 
-        for (p=0; p<magnify_rate; p++)
-            memcpy(&pixel[((y * magnify_rate) + p) * 160 * magnify_rate], 
-                   line, sizeof(uint32_t) * 160 * magnify_rate);
-    } 
+        for (y=0; y<144; y++)
+        {
+            for (x=0; x<160; x++)
+            { 
+                for (p=0; p<gpu_magnify_rate; p++)
+                    line[p + (x * gpu_magnify_rate)] = 
+                        gpu_state.frame_buffer[x + (y * 160)];
+            }
 
-    free(line);
+            for (p=0; p<gpu_magnify_rate; p++)
+                memcpy(&pixel[((y * gpu_magnify_rate) + p) * 
+                           160 * gpu_magnify_rate], 
+                       line, sizeof(uint32_t) * 160 * gpu_magnify_rate);
+        }  
+    
+        free(line);
+    }
+    else
+    {
+        /* just copy GPU frame buffer into SDL frame buffer */
+        memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+    }
 
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
-
-    /* wait for 60hz clock */
-    if (gpu_timer_triggered == 0)
-        sem_wait(&gpu_sem);
-
-    gpu_timer_triggered = 0;
 
     return;
 }
@@ -209,13 +165,13 @@ void static gpu_draw_frame()
 
 
 /* draw a single line */
-void static __always_inline gpu_draw_line(uint8_t line)
+void static gpu_draw_line(uint8_t line)
 {
     int i, t, y, px_start, px_drawn;
     uint8_t *tiles_map, tile_subline;
     uint16_t tiles_addr, tile_n, tile_idx, tile_line;
     uint16_t tile_y;
-    
+   
     /* gotta show BG */
     if ((*gpu_state.lcd_ctrl).bg)
     {
@@ -367,8 +323,11 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
         // uint8_t tile_x = (p * 4) % 8;
         uint8_t tile_y = (p * 4) / 8;
 
+        if (tile_y + frame_y > 143)
+            break;
+
         /* calc frame position buffer for 4 pixels */
-        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
+        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % (160 * 144); 
 
         /* calc tile pointer */
         int16_t tile_ptr = (tile_n * 16) + p;
@@ -389,12 +348,18 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
 
         /* set 8 pixels (full tile line) */
         for (i=0; i<8; i++)
+        {
+            /* over the last column? */
+            if (frame_x + i >= 160)
+                break;
+
             gpu_state.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
+        }
     }
 }
 
 /* draw a sprite tile in x,y coordinates */
-void static __always_inline gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
+void static gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
                                                  uint8_t line)
 {
     int p, x, y, i, j, pos, fb_x, off;
@@ -554,7 +519,7 @@ void static gpu_update_frame_buffer()
         }
     }
 
-    if (gpu_window && (*gpu_state.lcd_ctrl).window)
+    if (0 && gpu_window && (*gpu_state.lcd_ctrl).window)
     {
         /* gotta really draw a window? check if it is inside screen coordinates */
         if (*(gpu_state.window_y) >= 144 ||
@@ -581,11 +546,11 @@ void static gpu_update_frame_buffer()
             tile_pos_y = (z / 32) * 8 + *(gpu_state.window_y);
 
             /* gone over the screen visible X? */
-            if (tile_pos_x > 152)
+            if (tile_pos_x >= 160)
                 continue;
 
             /* gone over the screen visible Y? stop it */
-            if (tile_pos_y > 136)
+            if (tile_pos_y >= 144)
                 break;
 
             gpu_draw_tile(tiles_addr, tile_n, 
@@ -608,8 +573,7 @@ void static __always_inline gpu_step(uint8_t t)
     /* update clock counter */
     gpu_state.clocks += t;
 
-    // printf("CLOCKS %d - LINES %d\n", gpu_state.clocks, *gpu_state.ly);
-
+    /* take different action based on current state */
     switch((*gpu_state.lcd_status).mode)
     {
         /*
@@ -619,9 +583,10 @@ void static __always_inline gpu_step(uint8_t t)
                 if (gpu_state.clocks >= 204)
                 {
                     /*
-                     * if current line > 142, enter mode 01 (VBLANK)
+                     * if current line == 143 (and it's about to turn 144)
+                     * enter mode 01 (VBLANK)
                      */
-                    if (*gpu_state.ly > 142)
+                    if (*gpu_state.ly == 143)
                     {
                         /* notify mode has changes */
                         mode_changed = 1;
@@ -664,7 +629,7 @@ void static __always_inline gpu_step(uint8_t t)
         /*
          * during VBLANK (CPU can access VRAM)
          */
-        case 1: /* check if an HBLANK is complete (460 t-states) */
+        case 1: /* check if an HBLANK is complete (456 t-states) */
                 if (gpu_state.clocks >= 456) 
                 {
                     /* reset clock counter */
@@ -767,15 +732,6 @@ void static __always_inline gpu_step(uint8_t t)
                  (*gpu_state.lcd_status).ir_mode_10)
             gpu_if->lcd_ctrl = 1;
     }
-}
-
-/* callback for timer events (60 times per second) */
-void gpu_timer_handler(int sig, siginfo_t *si, void *uc)
-{
-    gpu_timer_triggered = 1;
-
-    /* unlock semaphore */
-    sem_post(&gpu_sem);
 }
 
 #endif 

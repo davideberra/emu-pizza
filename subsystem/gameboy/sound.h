@@ -20,28 +20,33 @@
 #ifndef __SOUND__
 #define __SOUND__
 
+#include <errno.h>
+#include <pthread.h>
 #include <SDL2/SDL.h>
+#include <semaphore.h>
+#include "subsystem/gameboy/cycles_hdr.h"
 #include "subsystem/gameboy/globals.h"
+#include "subsystem/gameboy/gpu_hdr.h"
 #include "subsystem/gameboy/mmu_hdr.h"
 #include "subsystem/gameboy/sound_hdr.h"
 
 /* SDL structure */
 SDL_AudioSpec desired;
 SDL_AudioSpec obtained;
+SDL_AudioDeviceID sound_audio_device_id;
+
 
 /* */
-uint32_t sound_cycles;
-
-uint32_t cpu_clock = 4194304;
+// uint32_t sound_cycles;
 
 
-uint32_t prot_cycles;
-uint32_t samples;
-uint32_t samples_req;
+// uint32_t prot_cycles;
+uint32_t samples = 0;
+// uint32_t samples_req;
 
 /* */
 #define SOUND_BUF_SZ 65536
-#define SOUND_FREQ   22050
+#define SOUND_FREQ   48000
 
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
@@ -53,17 +58,20 @@ uint32_t sound_fs_cycles_cnt;
 double   sound_sample_cycles;
 double   sound_sample_cycles_cnt;
 
+/* semaphore for audio sync */
+pthread_cond_t    sound_cond;
+pthread_mutex_t   sound_mutex;
+char              sound_buffer_full = 0;
+
 /* internal prototypes */
-void sound_envelope_step();
-void sound_length_ctrl_step();
-void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len);
-void sound_push_sample(int16_t s);
-void sound_read_samples(int len, int16_t *buf);
-void sound_sweep_step();
-
-
-
-int16_t miao = 10000;
+size_t sound_available_samples();
+void   sound_envelope_step();
+void   sound_length_ctrl_step();
+void   sound_read_buffer(void *userdata, uint8_t *stream, int snd_len);
+void   sound_push_sample(int16_t s);
+void   sound_read_samples(int len, int16_t *buf);
+void   sound_sweep_step();
+void   sound_term();
 
 
 /* init sound states */
@@ -71,15 +79,20 @@ void static sound_init()
 {
     SDL_Init(SDL_INIT_AUDIO);
     desired.freq = SOUND_FREQ;
-    desired.samples = 1024;
+    desired.samples = 512;
     desired.format = AUDIO_S16SYS;
     desired.channels = 1;
     desired.callback = sound_read_buffer;
     desired.userdata = NULL;
 
     /* Open audio */
-    if (!SDL_OpenAudio(&desired, &obtained)) {
+    if (SDL_OpenAudio(&desired, &obtained) == 0)
         SDL_PauseAudio(0);
+    else
+    {
+        printf("Cannot open audio device\n");
+        quit = 1;
+        return;
     }
 
     /* point sound structures to their memory areas */
@@ -88,34 +101,41 @@ void static sound_init()
     sound.channel_one_nr12 = (channel_one_nr12_t *) mmu_addr(0xFF12);
     sound.channel_one_nr13 = (channel_one_nr13_t *) mmu_addr(0xFF13);
     sound.channel_one_nr14 = (channel_one_nr14_t *) mmu_addr(0xFF14);
+
     sound.channel_two_nr21 = (channel_two_nr21_t *) mmu_addr(0xFF16);
     sound.channel_two_nr22 = (channel_two_nr22_t *) mmu_addr(0xFF17);
     sound.channel_two_nr23 = (channel_two_nr23_t *) mmu_addr(0xFF18);
     sound.channel_two_nr24 = (channel_two_nr24_t *) mmu_addr(0xFF19);
 
-//    sound.nr26 = (nr26_t *) mmu_addr(0xFF26);
+    sound.channel_three_nr30 = (channel_three_nr30_t *) mmu_addr(0xFF1A);
+    sound.channel_three_nr31 = (channel_three_nr31_t *) mmu_addr(0xFF1B);
+    sound.channel_three_nr32 = (channel_three_nr32_t *) mmu_addr(0xFF1C);
+    sound.channel_three_nr33 = (channel_three_nr33_t *) mmu_addr(0xFF1D);
+    sound.channel_three_nr34 = (channel_three_nr34_t *) mmu_addr(0xFF1E);
 
-    sound_cycles = 0;
-    prot_cycles = 0;
+    sound.wave_table = mmu_addr(0xFF30);
+
+    /* init semaphore for 60hz sync */
+    pthread_mutex_init(&sound_mutex, NULL);
+    pthread_cond_init(&sound_cond, NULL);
 
     /* how many cpu cycles we need to emit a 512hz clock (frame sequencer) */
-    sound_fs_cycles = cpu_clock / 512;
+    sound_fs_cycles = cycles_clock / 256;
 
     /* how many cpu cycles to generate a single sample? */
-    sound_sample_cycles = (double) cpu_clock / SOUND_FREQ;
-
-    printf("SAMPLE CYCLES: %f\n", sound_sample_cycles);
-
+    sound_sample_cycles = (double) cycles_clock / SOUND_FREQ;
 }
 
 /* update sound internal state given CPU T-states */
 void static __always_inline sound_step(uint8_t t)
 {
-    prot_cycles += t;
+    // prot_cycles += t;
     sound_fs_cycles_cnt += t;
     sound_sample_cycles_cnt += (double) t;
+ 
+    // sound_total_cycles += t;
 
-    /* frame sequencer run at 512 hz */
+    /* frame sequencer runs at 512 hz */
     if (sound_fs_cycles_cnt >= sound_fs_cycles)
     {
         sound.fs_cycles = (sound.fs_cycles + 1) % 8;
@@ -183,8 +203,26 @@ void static __always_inline sound_step(uint8_t t)
         }
     }
 
+    /* update channel three */
+    if (sound.channel_three.active)
+    {
+        sound.channel_three.cycles_cnt += t;
 
+        /* enough CPU cycles to trigger a wave table step? */
+        if (sound.channel_three.cycles_cnt >=
+            sound.channel_three.cycles)
+        {
+            /* switch to the next wave sample */
+            sound.channel_three.index = (sound.channel_three.index + 1) % 32;
 
+            /* set the new current sample */
+            sound.channel_three.sample = 
+                sound.channel_three.wave[sound.channel_three.index];
+
+            /* go back */
+            sound.channel_three.cycles_cnt -= sound.channel_three.cycles;
+        } 
+    }
 
 
     /* enough cpu cycles to generate a single frame? */
@@ -206,6 +244,12 @@ void static __always_inline sound_step(uint8_t t)
             channels++;
         }
          
+        if (sound.channel_three.active)
+        {
+            sample += sound.channel_three.sample;
+            channels++;
+        }
+         
         /* at least one channel? */ 
         if (channels)
         {
@@ -215,32 +259,9 @@ void static __always_inline sound_step(uint8_t t)
         else
             sound_push_sample(0); 
 
-//        if (samples % 64 == 0)
-//            miao *= -1;
-
-//        sound_push_sample(miao);
-
         samples++;
 
         sound_sample_cycles_cnt -= sound_sample_cycles;
-    }
-
-    if (prot_cycles >= cpu_clock)
-    {
-        uint32_t available_samples;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-        if (sound_buf_rd > sound_buf_wr)
-            available_samples = sound_buf_wr + SOUND_BUF_SZ - sound_buf_rd;
-        else
-            available_samples = sound_buf_wr - sound_buf_rd;
-
-        // printf("%u.%u - ZIRO COMPLETO, CICLI %d - GENERATI %d SAMPLES - RICHIESTI %d SAMPLES - DISPONIBILI %d \n", tv.tv_sec, tv.tv_usec, prot_cycles, samples, samples_req, available_samples);
-
-        samples = 0;
-        samples_req = 0;
-        prot_cycles = 0;
     }
 }
 
@@ -254,10 +275,7 @@ void sound_length_ctrl_step()
 
         /* if ZERO is reached, turn off the channel */
         if (sound.channel_one.length == 0)
-        {
-//            printf("DISATTIVO CANALE UNO\n");
             sound.channel_one.active = 0;
-        }
     }
 
     if (sound.channel_two.active)
@@ -266,60 +284,24 @@ void sound_length_ctrl_step()
 
         /* if ZERO is reached, turn off the channel */
         if (sound.channel_two.length == 0)
-        {
-//            printf("DISATTIVO CANALE DUO\n");
             sound.channel_two.active = 0;
-        }
     }
 
-}
-
-/* generate samples after a single change on sound registers */
-void sound_generate()
-{
-    uint32_t i;
-    uint32_t samples = (sound_cycles * SOUND_FREQ) / 4194304;
-
-    /* AT LEAST a sample? */
-    if (samples == 0)
-        return;
-
-/*    uint16_t freq = sound.square_one_nr13->frequency_lsb | 
-                    (sound.square_one_nr14->frequency_msb << 8); 
-
-    printf("HZ TUONO %d - SABOTELLA %d \n", freq, ~(freq + 1));
-
-    if (freq != 0)
+    if (sound.channel_three.active)
     {
-        uint32_t hz = 131072 / (2048 - freq);
+        sound.channel_three.length--;
 
-        printf("HZ SUONO %d\n", hz);
+        /* if ZERO is reached, turn off the channel */
+        if (sound.channel_three.length == 0)
+            sound.channel_three.active = 0;
     }
 
-    for (i=0; i<samples; i++)
-    {
-        sound_push_sample((int16_t) i);
-    } */
- 
-    /* reset cycles */
-    sound_cycles = 0;
 }
 
 void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 {
-    /* test */
-/*    int i;
-    int16_t sample = 10000;
-
-    for (i=0; i<snd_len; i++)
-    {
-        if (i % 32 == 0)
-            sample *= -1;
-
-        sound_push_sample(sample);
-    } */
-
-    samples_req += (snd_len / 2);
+    while (sound_available_samples() < (snd_len / 2))
+        usleep(10000);
 
     sound_read_samples(snd_len / 2, (int16_t *) stream);
 }
@@ -327,9 +309,33 @@ void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
+    /* lock the buffer */
+    pthread_mutex_lock(&sound_mutex);
+    
     sound_buf[sound_buf_wr] = s;
 
     sound_buf_wr = (sound_buf_wr + 1) % SOUND_BUF_SZ;
+
+    /* wait for the audio to be played */
+    if (sound_available_samples() == 18000)
+    {
+        sound_buffer_full = 1;
+
+        while (sound_buffer_full == 1)
+            pthread_cond_wait(&sound_cond, &sound_mutex);
+    }
+
+    /* unlock it */
+    pthread_mutex_unlock(&sound_mutex);
+}
+
+/* calculate the available samples in circula buffer */
+size_t sound_available_samples()
+{
+    if (sound_buf_rd > sound_buf_wr)
+        return sound_buf_wr + SOUND_BUF_SZ - sound_buf_rd;
+
+    return sound_buf_wr - sound_buf_rd; 
 }
 
 /* read a block of data from circular buffer */
@@ -338,31 +344,18 @@ void sound_read_samples(int len, int16_t *buf)
     size_t available_samples;
     int to_read = len;
 
-    int i;
-  /*  int16_t sample = 10000;
-
-    for (i=0; i<len; i++)
-    {
-        if (i % 64 == 0)
-            sample *= -1;
-        buf[i] = sample;
-    }
+    /* lock the buffer */
+    pthread_mutex_lock(&sound_mutex);
     
-    return; */
-      
     if (sound_buf_rd > sound_buf_wr)
         available_samples = sound_buf_wr + SOUND_BUF_SZ - sound_buf_rd;
     else
         available_samples = sound_buf_wr - sound_buf_rd;
 
-    // printf("DISPONIBILI %d - WR %d - RD %d\n", available_samples, sound_buf_wr, sound_buf_rd);
-
+    /* not enough samples? read what we got */
     if (available_samples < len)
-    {
-//        printf("SAMPLES DISPONIBILI: %d - RICHIESTI %d\n", available_samples, len);
         to_read = available_samples;
-    }
-   
+
     if (sound_buf_rd + to_read > SOUND_BUF_SZ)
     {
         /* overlaps the end of the buffer? copy in 2 phases */
@@ -377,17 +370,67 @@ void sound_read_samples(int len, int16_t *buf)
     }
     else
     {
-
-    /*    for (i=0; i<to_read; i++)
-            printf("%d ", sound_buf[sound_buf_rd + i]);
-        printf("\n");  */
-     
         /* a single memcpy is enough */
         memcpy(buf, &sound_buf[sound_buf_rd], to_read * 2); 
 
         /* update read index */
         sound_buf_rd += to_read;
     }    
+
+    if (sound_buffer_full)
+    {
+        /* unlock write thread */
+        sound_buffer_full = 0;
+ 
+        /* send a signal */
+        pthread_cond_signal(&sound_cond);
+    }
+
+    /* unlock the buffer */
+    pthread_mutex_unlock(&sound_mutex);
+}
+
+/* calc the new frequency by sweep module */
+uint32_t sound_sweep_calc()
+{
+    uint32_t new_freq;
+
+    /* time to update frequency */
+    uint32_t diff = 
+             sound.channel_one.sweep_shadow_frequency >> 
+             sound.channel_one_nr10->shift;
+
+    /* the calculated diff must be summed or subtracted to frequency */
+    if (sound.channel_one_nr10->negate)
+        new_freq = sound.channel_one.sweep_shadow_frequency - diff;
+    else
+        new_freq = sound.channel_one.sweep_shadow_frequency + diff;
+
+    /* if freq > 2047, turn off the channel */
+    if (new_freq > 2047)
+        sound.channel_one.active = 0;
+
+    /* copy new_freq into shadow register */
+    sound.channel_one.sweep_shadow_frequency = new_freq;
+
+    return new_freq;
+}
+
+/* set channel one new frequency */
+void sound_set_channel_one_frequency(uint32_t new_freq)
+{
+    /* update with the new frequency */
+    sound.channel_one.frequency = new_freq;
+
+    /* update them also into memory */
+    sound.channel_one_nr13->frequency_lsb = (uint8_t) (new_freq & 0xff);
+    sound.channel_one_nr14->frequency_msb = (uint8_t) ((new_freq >> 8) & 0x07);
+
+    /* update the duty cycles */
+    sound.channel_one.duty_cycles = (2048 - new_freq) * 4;
+
+    /* and reset them */
+    sound.channel_one.duty_cycles_cnt = 0;
 }
 
 /* step of frequency sweep at 128hz */
@@ -401,28 +444,13 @@ void sound_sweep_step()
 
         if (sound.channel_one.sweep_cnt > sound.channel_one_nr10->sweep_period)
         {
-            /* time to update frequency */
-            uint32_t diff = sound.channel_one.frequency >> sound.channel_one_nr10->shift;
+            new_freq = sound_sweep_calc();
 
-            /* the calculated diff must be summed or subtracted to frequency */
-            if (sound.channel_one_nr10->negate)
-                new_freq = sound.channel_one.frequency - diff;
-            else 
-                new_freq = sound.channel_one.frequency + diff;
+            /* update all the stuff related to new frequency */
+            sound_set_channel_one_frequency(new_freq);
 
-            printf("NUOVA FRECHETE %d\n", new_freq);
-
-            /* if freq > 2047, turn off the channel */
-            if (new_freq > 2047)
-                sound.channel_one.active = 0;
-            else
-            {
-                /* update with the new frequency */
-                sound.channel_one.frequency = new_freq;
-
-                /* update the duty cycles */
-                sound.channel_one.duty_cycles = (2048 - new_freq) * 4;
-            }
+            /* update freq again (but only in shadow register) */
+            sound_sweep_calc();
  
             /* reset sweep counter */
             sound.channel_one.sweep_cnt = 0;
@@ -486,6 +514,7 @@ void sound_envelope_step()
 
 void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 {
+    int i;
 
     switch (a)
     {
@@ -541,28 +570,27 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
             /* reset envelope counter */
             sound.channel_one.envelope_cnt = 0;
 
-            /* set sweep as active if period != 0 and shift != 0 */
-            if (sound.channel_one_nr10->sweep_period != 0 &&
+            /* save current freq into sweep shadow register */
+            sound.channel_one.sweep_shadow_frequency = freq;
+
+            /* reset sweep timer */
+            sound.channel_one.sweep_cnt = 0;
+
+            /* set sweep as active if period != 0 or shift != 0 */
+            if (sound.channel_one_nr10->sweep_period != 0 ||
                 sound.channel_one_nr10->shift != 0)
                 sound.channel_one.sweep_active = 1;
             else
                 sound.channel_one.sweep_active = 0;
 
-/*
-            printf("MAN DETTO DI EMETTERE UNA NOTA FREQ %d LUNGA %d DUTY PERIOD %f LENGTH ENABLE %d\n", 
-                sound.channel_one.frequency,
-                sound.channel_one.length,
-                sound.channel_one.duty_cycles,
-                sound.channel_one_nr14->length_enable);
+            /* if shift is != 0, calc the new frequency */
+            if (sound.channel_one_nr10->shift != 0)
+            {
+                uint32_t new_freq = sound_sweep_calc();
 
-            printf("ENVELOPE PERIOD %d ADD %d VOLUME %d\n", sound.channel_one_nr12->period,
-                                                            sound.channel_one_nr12->add,
-                                                            sound.channel_one_nr12->volume);
-
-            printf("SWEEP SHIFT %d - NEGATE %d - PERIOD %d\n", sound.channel_one_nr10->shift,
-                                                               sound.channel_one_nr10->negate,
-                                                               sound.channel_one_nr10->sweep_period);
-*/
+                /* update all the stuff related to new frequency */
+                sound_set_channel_one_frequency(new_freq);
+            }
         }
 
         case 0xFF16:
@@ -616,16 +644,47 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 
             /* reset envelope counter */
             sound.channel_two.envelope_cnt = 0;
-/*
-            printf("MAN DETTO DI EMETTERE UNA NOTA FREQ %d LUNGA %d DUTY PERIOD %f\n",
-                sound.channel_two.frequency,
-                sound.channel_two.length,
-                sound.channel_two.duty_cycles);
-*/
+        }
+
+        case 0xFF1E:
+        if (v & 0x80)
+        {
+            uint16_t freq = sound.channel_three_nr33->frequency_lsb |
+                            (sound.channel_three_nr34->frequency_msb << 8);
+            uint8_t len = sound.channel_three_nr31->length_load;
+
+            /* setting internal modules data with stuff taken from memory */
+            sound.channel_three.active = 1;
+            sound.channel_three.frequency = freq;
+
+            /* qty of cpu ticks needed for a wave sample change */
+            sound.channel_three.cycles = (2048 - freq) * 2;
+
+            /* init wave table index */
+            sound.channel_three.index = 0;
+
+            /* calc length */
+            sound.channel_three.length = 256 - len;
+
+            /* fill wave buffer */
+            for (i=0; i<16; i++)
+            {
+                sound.channel_three.wave[i*2] = ((sound.wave_table[i] & 0xf0) >> 4) * (32275 / 15);
+                sound.channel_three.wave[(i*2) + 1] = (sound.wave_table[i] & 0x0f) * (32275 / 15);
+            }
+
+            /* update with desired audio volume */
+            for (i=0; i<32; i++)
+            {
+                sound.channel_three.wave[i] >>= (sound.channel_three_nr32->volume_code == 0 
+                                                 ? 4 : sound.channel_three_nr32->volume_code - 1);
+            }
         }
     }
+}
 
-    
+void sound_term()
+{
 }
 
 #endif 

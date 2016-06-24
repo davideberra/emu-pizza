@@ -24,8 +24,46 @@
 #include "subsystem/gameboy/serial_hdr.h"
 #include "subsystem/gameboy/timer_hdr.h"
 
+
+/* timer */
+struct itimerspec cycles_timer;
+timer_t           cycles_timer_id = 0;
+sem_t             cycles_sem;
+    struct sigevent   te;
+    struct sigaction  sa;
+
+
+/* internal prototype for timer handler */
+void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
+
+
+/* this function is gonna be called every M-cycle = 4 ticks of CPU */
 void static __always_inline cycles_step(uint8_t s)
 {
+    cycles_cnt += s;
+
+    /* 65536 == cpu clock / 64 pauses every second */
+    if (cycles_cnt % (cycles_clock / 64) == 0)
+    {
+        while (1)
+        {
+            int res;
+
+            res = sem_wait(&cycles_sem);
+
+            if (res == -1)
+            {
+                if (errno == EINTR)
+                    continue;
+            }
+
+            break;
+        }
+    }
+
+    if (cycles_cnt == cycles_clock)
+        cycles_cnt = 0;
+
     /* update GPU state */
     gpu_step(s);
 
@@ -34,6 +72,46 @@ void static __always_inline cycles_step(uint8_t s)
 
     /* update serial state */
     serial_step(s);
+
+    /* and finally sound */
+    sound_step(s);
 }
 
+char cycles_init()
+{
+    /* init semaphore for cpu clocks sync */
+    sem_init(&cycles_sem, 0, 0);
+
+    /* prepare timer to emulate video refresh interrupts */
+    sa.sa_flags = SA_SIGINFO;
+    sa.sa_sigaction = cycles_timer_handler;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGRTMIN, &sa, NULL) == -1)
+        return 1;
+    bzero(&te, sizeof(struct sigevent));
+
+    /* set and enable alarm */
+    te.sigev_notify = SIGEV_SIGNAL;
+    te.sigev_signo = SIGRTMIN;
+    te.sigev_value.sival_ptr = &cycles_timer_id;
+    timer_create(CLOCK_REALTIME, &te, &cycles_timer_id);
+
+    /* initialize 64 hits per second timer */
+    cycles_timer.it_value.tv_sec = 1;
+    cycles_timer.it_value.tv_nsec = 0;
+    cycles_timer.it_interval.tv_sec = 0;
+    cycles_timer.it_interval.tv_nsec = 1000000000 / 64;
+
+    /* start timer */
+    timer_settime(cycles_timer_id, 0, &cycles_timer, NULL);
+
+    return 0;
+}
+
+/* callback for timer events (64 times per second) */
+void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
+{
+    sem_post(&cycles_sem);
+}
+      
 #endif

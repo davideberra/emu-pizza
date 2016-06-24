@@ -61,7 +61,7 @@ uint32_t ram_sz;
 
 /* current bank in case of MBC controller */
 uint8_t rom_current_bank = 1;
-uint8_t ram_current_bank = 1;
+uint8_t ram_current_bank = 0;
 
 /* banking mode - 0 ROM, 1 RAM */
 uint8_t banking = 0;
@@ -70,7 +70,7 @@ uint8_t banking = 0;
 void static mmu_init(uint8_t c, uint8_t rn)
 {
     rom_current_bank = 0x01;
-    ram_current_bank = 0x01;
+    ram_current_bank = 0x00;
 
     /* save carttype and qty of ROM blocks */
     carttype = c;
@@ -202,6 +202,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            /* ROM banking? it's about 2 higher bits */
                            if (banking == 0)
                            {
+                               // printf("ROM\n");
+
                                /* reset 5 bits */
                                uint8_t b = rom_current_bank & 0x1F;
 
@@ -214,6 +216,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                                /* filter result to get a value < max rom number */
                                b &= filter;
 
+                               // printf("BANK TROVAO: %02x\n", b);
+
                                if (b != rom_current_bank)
                                {
                                    /* copy! */
@@ -224,6 +228,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            }
                            else
                            {
+                               printf("RAM - CURRENT BANK %02x \n", ram_current_bank);
+
                                /* save current bank */
                                memcpy(&ram[0x2000 * ram_current_bank], 
                                       &memory[0xA000], 0x2000);
@@ -261,6 +267,18 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return; 
     }
 
+    /* changes on sound registers? */
+    if (a >= 0xFF10 && a <= 0xFF26)
+    {
+        /* set memory */
+        memory[a] = v;
+
+        /* then generate samples! */
+        sound_write_reg(a, v);
+
+        return;
+    }
+
     if (a >= 0xE000 && a <= 0xFDFF)
     {
         memory[a - 0x2000] = v;
@@ -268,22 +286,20 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     } 
 
     /* accessing VRAM */
-    if (a >= 0x8000 && a <= 0x9FFF)
+/*    if (a >= 0x8000 && a <= 0x9FFF)
     {
-        /* can't access vram! */
         if ((*gpu_state.lcd_status).mode == 0x03)
             return; 
 
-    }
+    } */
 
     /* accessing OAM */
-    if (a >= 0xFE00 && a <= 0xFE9F)
+/*    if (a >= 0xFE00 && a <= 0xFE9F)
     {
-        /* can't access OAM or VRAM! */
         if ((*gpu_state.lcd_status).mode == 0x02 || 
             (*gpu_state.lcd_status).mode == 0x03)
             return;
-    }
+    } */
 
     /* resetting timer DIV */
     if (a == 0xFF04)
@@ -306,9 +322,11 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     {
         uint16_t src = v * 256;
 
-        if ((*gpu_state.lcd_status).mode == 0x02 || 
-            (*gpu_state.lcd_status).mode == 0x03)
-            return;
+    //    if ((*gpu_state.lcd_status).mode == 0x02 || 
+    //        (*gpu_state.lcd_status).mode == 0x03)
+    //        return;
+
+//        printf("DMA COPIO DA %04x\n", src);
 
         /* copy an entire block of memory into OAM area */
         memcpy(&memory[0xFE00], &memory[src], 160);
@@ -355,7 +373,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 unsigned int static __always_inline mmu_read_16(uint16_t a)
 {
     /* 16 bit read = +8 cycles */
-    cycles_step(8);
+    cycles_step(4);
+    cycles_step(4);
 
     return (memory[a] | (memory[a + 1] << 8));
 }
@@ -367,7 +386,8 @@ void static __always_inline mmu_write_16(uint16_t a, uint16_t v)
     memory[a + 1] = (uint8_t) (v >> 8);
 
     /* 16 bit write = +8 cycles */
-    cycles_step(8);
+    cycles_step(4);
+    cycles_step(4);
 }
 
 void mmu_save_ram(char *fn)
@@ -398,11 +418,9 @@ void mmu_restore_ram(char *fn)
     {
         FILE *fp = fopen(fn, "r+");
 
+        /* it could be not present */
         if (fp == NULL)
-        {
-            printf("Error restoring RAM\n");
             return;
-        }
 
         if (ram_sz <= 0x2000)
         {
