@@ -180,10 +180,10 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            b |= v & 0x1F;
 
                            /* filter with max ROM available */
-                           // uint8_t filter = 0xFF >> (8 - roms);
+                           uint8_t filter = 0xFF >> (7 - roms);
 
                            /* filter result to get a value < max rom number */
-                           // b &= filter;
+                           b &= filter;
 
                            /* 0x00 is not valid, switch it to 0x01 */
                            if (b == 0x00)
@@ -202,8 +202,6 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            /* ROM banking? it's about 2 higher bits */
                            if (banking == 0)
                            {
-                               // printf("ROM\n");
-
                                /* reset 5 bits */
                                uint8_t b = rom_current_bank & 0x1F;
 
@@ -211,12 +209,10 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                                b |= (v << 5);
 
                                /* filter with max ROM available */
-                               uint8_t filter = 0xFF >> (8 - roms);
+                               uint8_t filter = 0xFF >> (7 - roms);
 
                                /* filter result to get a value < max rom number */
                                b &= filter;
-
-                               // printf("BANK TROVAO: %02x\n", b);
 
                                if (b != rom_current_bank)
                                {
@@ -228,17 +224,18 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            }
                            else
                            {
-                               printf("RAM - CURRENT BANK %02x \n", ram_current_bank);
+                               if ((0x2000 * v) < ram_sz)
+                               { 
+                                   /* save current bank */
+                                   memcpy(&ram[0x2000 * ram_current_bank], 
+                                          &memory[0xA000], 0x2000);
+  
+                                   ram_current_bank = v;
 
-                               /* save current bank */
-                               memcpy(&ram[0x2000 * ram_current_bank], 
-                                      &memory[0xA000], 0x2000);
-
-                               ram_current_bank = v;
-
-                               /* move new ram bank */
-                               memcpy(&memory[0xA000], &ram[0x2000 * ram_current_bank], 
-                                      0x2000);
+                                   /* move new ram bank */
+                                   memcpy(&memory[0xA000], &ram[0x2000 * ram_current_bank], 
+                                          0x2000);
+                               }
                            }
                        }
                        else if (a >= 0x6000 && a <= 0x7FFF)
@@ -315,23 +312,23 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
             gpu_toggle(v);
     }
 
+    /* palette update */
+    if (a >= 0xFF47 && a <= 0xFF49)
+        gpu_write_reg(a, v);
+
     /* finally set memory byte with data */
     memory[a] = v;
 
+    /* DMA access */
     if (a == 0xFF46)
     {
         uint16_t src = v * 256;
-
-    //    if ((*gpu_state.lcd_status).mode == 0x02 || 
-    //        (*gpu_state.lcd_status).mode == 0x03)
-    //        return;
-
-//        printf("DMA COPIO DA %04x\n", src);
 
         /* copy an entire block of memory into OAM area */
         memcpy(&memory[0xFE00], &memory[src], 160);
     } 
 
+/*
     if (a == 0xFF47)
     {
         gpu_state.bg_palette[0] = gpu_color_lookup[v & 0x03];
@@ -355,6 +352,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         gpu_state.obj_palette_1[2] = gpu_color_lookup[(v & 0x30) >> 4];
         gpu_state.obj_palette_1[3] = gpu_color_lookup[(v & 0xc0) >> 6];
     }
+*/
 
     if (0 && a == 0xFF40)
     {

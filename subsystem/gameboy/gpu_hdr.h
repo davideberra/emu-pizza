@@ -80,19 +80,20 @@ typedef struct gpu_s
 
     /* frame buffer     */
     uint32_t  frame_buffer[160 * 144];
+    char      priority[160 * 144];
 
 } gpu_t;
 
 /* global state of GPU */
-gpu_t gpu_state;
+gpu_t gpu;
 
 /* 2 bit to 8 bit color lookup */
 static uint32_t gpu_color_lookup[] = { 0x00FFFFFF, 0x00AAAAAA, 0x00555555, 0x00000000 };
 
-
-
-
 /* TEST */
 uint32_t gpu_total_cycles = 0;
+
+/* exported functions */
+void gpu_write_reg(uint16_t a, uint8_t v);
 
 #endif

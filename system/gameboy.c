@@ -31,12 +31,7 @@
 #include "subsystem/gameboy/input.h"
 #include "subsystem/gameboy/serial.h"
 #include "cpu/z80_gameboy_regs.h"
-// #include "cpu/z80_gameboy_mmu.h"
-// #include "cpu/z80.h"
 #include "cpu/z80_gameboy.h"
-
-/* Gameboy runs on z80 CPU, so let's instanciate its state struct */
-// z80_state_t *z80_state;
 
 
 uint8_t bios[] = {
@@ -409,6 +404,8 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* get cartridge infos */
     uint8_t mbc = rom[0x147];
 
+    printf("Cartridge code: %02x\n", mbc);
+
     switch (mbc)
     {
         case 0x00: printf("ROM ONLY\n"); break;
@@ -417,6 +414,9 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
         case 0x03: printf("ROM + MBC1 + RAM + BATTERY\n"); break;
         case 0x05: printf("ROM + MBC2\n"); break;
         case 0x06: mmu_init_ram(512); printf("ROM + MBC2 + BATTERY\n"); break;
+
+        default: printf("Unknown cartridge type: %02x\n", mbc);
+                 return;
     }
 
     /* title */
@@ -482,14 +482,6 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* reset flags */
     *state.f = 0x00;
 
-    /* prepare timer to emulate video refresh interrupts */
-    /*sa.sa_flags = SA_SIGINFO;
-    sa.sa_sigaction = gameboy_timer_handler;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGRTMIN, &sa, NULL) == -1)
-        return;
-    bzero(&te, sizeof(struct sigevent)); */
-
     /* init GPU */
     gpu_init();
 
@@ -498,6 +490,12 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 
     /* init serial */
     serial_init();
+
+    /* init sound (this will start audio thread) */
+    sound_init();
+
+    /* init cycles syncronizer */
+    cycles_init();
 
     /* get interrupt flags and interrupt enables */
     uint8_t *int_e;
@@ -520,7 +518,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
         op = mmu_read(state.pc);
 
         /* override classic Z80 instruction with GB Z80 version */
-        if (gameboy_z80_execute(op) != 0)
+        // if (gameboy_z80_execute(op) != 0)
             z80_execute(op);
 
         /* keep low bits always set to zero */
@@ -528,6 +526,11 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     }
 
     printf("BIOS LOADED\n");
+
+    /* for (i=0xFF00; i<=0xFFFF; i++)
+        printf("REGISTRO %04X - VALORE %02X\n", i, mmu_read_no_cyc(i));
+
+    return;*/
 
     /* load FULL ROM at 0x0000 address of system memory */
     mmu_load_cartridge(rom, size);
@@ -557,7 +560,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     mmu_write_no_cyc(0xFF40, 0x91);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
-    mmu_write_no_cyc(0xFF44, 0x90);  
+    mmu_write_no_cyc(0xFF44, 0x00);  
     mmu_write_no_cyc(0xFF45, 0x00); 
     mmu_write_no_cyc(0xFF47, 0xFC); 
     mmu_write_no_cyc(0xFF48, 0xFF); 
@@ -568,9 +571,9 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 
     mmu_write_no_cyc(0xC000, 0x08);
 
-    mmu_write_no_cyc(0xFFFE, 0x0B);
+    mmu_write_no_cyc(0xFFFE, 0x69);
 
-    state.a = 0x11;
+    state.a = 0x01;
     state.b = 0x00;
     state.c = 0x13;
     state.d = 0x00;
@@ -579,18 +582,11 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     state.l = 0x4d;
     state.pc = 0x0100;
     state.sp = 0xFFFE;
-    *state.f = 0x90;
+    *state.f = 0xB0; 
  
-    /* init sound (this will start audio thread) */
-    sound_init();
-
-    /* init cycles syncronizer */
-    cycles_init();
-
-         *state.f &= 0xf0;
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
-    /* 1) execute instruction,2) update cycles counter 3) check interrupts */
+    /* 1) execute instruction 2) update cycles counter 3) check interrupts */
     /* and repeat forever                                                  */
     while (!quit)
     {
@@ -607,7 +603,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
  printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, *state.de, *state.hl);
+ printf("A: %02x BC: %04x DE: %04x HL: %04x DFD6: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xdfd6));
 */
 
 // printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %04x FF41: %04x FF44: %04x\n", state.a, *state.bc, *state.de, *state.hl, 
@@ -631,7 +627,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 
         /* if last op was Interrupt Enable (0xFB), we need to check for INTR on next cycle */
         // if (op == 0xFB)
-        //    continue;
+        //     continue;
 
         // if (*int_e & 0x10)
         //     printf("PAD INTERRUPT ENABLED\n");

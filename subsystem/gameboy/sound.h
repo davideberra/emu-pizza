@@ -33,24 +33,16 @@
 /* SDL structure */
 SDL_AudioSpec desired;
 SDL_AudioSpec obtained;
-SDL_AudioDeviceID sound_audio_device_id;
-
 
 /* */
-// uint32_t sound_cycles;
-
-
-// uint32_t prot_cycles;
-uint32_t samples = 0;
-// uint32_t samples_req;
-
-/* */
-#define SOUND_BUF_SZ 65536
-#define SOUND_FREQ   48000
+#define SOUND_SAMPLES 512
+#define SOUND_BUF_SZ  65536
+#define SOUND_FREQ    48000
 
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
 size_t   sound_buf_wr;
+size_t   sound_buf_available;
 
 /* CPU cycles to internal cycles counters */
 uint32_t sound_fs_cycles;
@@ -62,6 +54,7 @@ double   sound_sample_cycles_cnt;
 pthread_cond_t    sound_cond;
 pthread_mutex_t   sound_mutex;
 char              sound_buffer_full = 0;
+char              sound_buffer_empty = 0;
 
 /* internal prototypes */
 size_t sound_available_samples();
@@ -79,7 +72,7 @@ void static sound_init()
 {
     SDL_Init(SDL_INIT_AUDIO);
     desired.freq = SOUND_FREQ;
-    desired.samples = 512;
+    desired.samples = SOUND_SAMPLES * 2; 
     desired.format = AUDIO_S16SYS;
     desired.channels = 1;
     desired.callback = sound_read_buffer;
@@ -120,7 +113,7 @@ void static sound_init()
     pthread_cond_init(&sound_cond, NULL);
 
     /* how many cpu cycles we need to emit a 512hz clock (frame sequencer) */
-    sound_fs_cycles = cycles_clock / 256;
+    sound_fs_cycles = cycles_clock / 512;
 
     /* how many cpu cycles to generate a single sample? */
     sound_sample_cycles = (double) cycles_clock / SOUND_FREQ;
@@ -129,14 +122,11 @@ void static sound_init()
 /* update sound internal state given CPU T-states */
 void static __always_inline sound_step(uint8_t t)
 {
-    // prot_cycles += t;
     sound_fs_cycles_cnt += t;
     sound_sample_cycles_cnt += (double) t;
  
-    // sound_total_cycles += t;
-
-    /* frame sequencer runs at 512 hz */
-    if (sound_fs_cycles_cnt >= sound_fs_cycles)
+    /* frame sequencer runs at 512 hz - 8192 ticks at standard CPU speed */
+    if (sound_fs_cycles_cnt == sound_fs_cycles)
     {
         sound.fs_cycles = (sound.fs_cycles + 1) % 8;
 
@@ -224,7 +214,6 @@ void static __always_inline sound_step(uint8_t t)
         } 
     }
 
-
     /* enough cpu cycles to generate a single frame? */
     if (sound_sample_cycles_cnt >= sound_sample_cycles)
     {
@@ -232,7 +221,7 @@ void static __always_inline sound_step(uint8_t t)
         uint8_t channels = 0;
 
         /* time to generate a sample! sum all the fields */
-        if (sound.channel_one.active)
+        if (sound.channel_one.active && sound.channel_one.sample)
         {
             sample += sound.channel_one.sample;
             channels++;
@@ -259,8 +248,6 @@ void static __always_inline sound_step(uint8_t t)
         else
             sound_push_sample(0); 
 
-        samples++;
-
         sound_sample_cycles_cnt -= sound_sample_cycles;
     }
 }
@@ -269,7 +256,7 @@ void static __always_inline sound_step(uint8_t t)
 void sound_length_ctrl_step()
 {
     /* treat channel one */ 
-    if (sound.channel_one.active)
+    if (sound.channel_one.active && sound.channel_one_nr14->length_enable)
     {
         sound.channel_one.length--;
 
@@ -278,7 +265,7 @@ void sound_length_ctrl_step()
             sound.channel_one.active = 0;
     }
 
-    if (sound.channel_two.active)
+    if (sound.channel_two.active && sound.channel_two_nr24->length_enable)
     {
         sound.channel_two.length--;
 
@@ -287,7 +274,7 @@ void sound_length_ctrl_step()
             sound.channel_two.active = 0;
     }
 
-    if (sound.channel_three.active)
+    if (sound.channel_three.active && sound.channel_three_nr34->length_enable)
     {
         sound.channel_three.length--;
 
@@ -300,9 +287,6 @@ void sound_length_ctrl_step()
 
 void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 {
-    while (sound_available_samples() < (snd_len / 2))
-        usleep(10000);
-
     sound_read_samples(snd_len / 2, (int16_t *) stream);
 }
 
@@ -311,13 +295,25 @@ void sound_push_sample(int16_t s)
 {
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
-    
+   
+    /* assign sample value */ 
     sound_buf[sound_buf_wr] = s;
 
+    /* update write index */
     sound_buf_wr = (sound_buf_wr + 1) % SOUND_BUF_SZ;
 
+    /* update available samples */
+    sound_buf_available++;
+
+    /* if it's locked and we got enough samples, unlock */
+    if (sound_buffer_empty && sound_buf_available == SOUND_SAMPLES)
+    {
+        sound_buffer_empty = 0;
+        pthread_cond_signal(&sound_cond); 
+    }
+
     /* wait for the audio to be played */
-    if (sound_available_samples() == 18000)
+    if (sound_buf_available == 18000)
     {
         sound_buffer_full = 1;
 
@@ -341,20 +337,26 @@ size_t sound_available_samples()
 /* read a block of data from circular buffer */
 void sound_read_samples(int len, int16_t *buf)
 {
-    size_t available_samples;
+//     size_t available_samples;
     int to_read = len;
 
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
     
-    if (sound_buf_rd > sound_buf_wr)
+/*    if (sound_buf_rd > sound_buf_wr)
         available_samples = sound_buf_wr + SOUND_BUF_SZ - sound_buf_rd;
     else
-        available_samples = sound_buf_wr - sound_buf_rd;
+        available_samples = sound_buf_wr - sound_buf_rd; */
 
     /* not enough samples? read what we got */
-    if (available_samples < len)
-        to_read = available_samples;
+    if (sound_buf_available < len)
+    {
+        /* stop until we got enough samples */
+        sound_buffer_empty = 1;
+ 
+        while (sound_buffer_empty == 1)
+            pthread_cond_wait(&sound_cond, &sound_mutex);
+    }
 
     if (sound_buf_rd + to_read > SOUND_BUF_SZ)
     {
@@ -385,6 +387,9 @@ void sound_read_samples(int len, int16_t *buf)
         /* send a signal */
         pthread_cond_signal(&sound_cond);
     }
+
+    /* update avaiable samples */
+    sound_buf_available -= len;
 
     /* unlock the buffer */
     pthread_mutex_unlock(&sound_mutex);
@@ -461,7 +466,6 @@ void sound_sweep_step()
 /* step of envelope at 64hz */
 void sound_envelope_step()
 {
-
     if (sound.channel_one.active)
     {
         /* update counter */
@@ -477,7 +481,7 @@ void sound_envelope_step()
             }
             else
             {
-                if (sound.channel_one.volume > 0)
+                if (sound.channel_one.volume >= 2048)
                     sound.channel_one.volume -= 2048;
             }
 
@@ -519,7 +523,7 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
     switch (a)
     {
         case 0xFF11:
-       
+
             sound.channel_one.length = 64 - sound.channel_one_nr11->length_load;
 
             break;

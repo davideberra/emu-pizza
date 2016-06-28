@@ -65,7 +65,7 @@ int gpu_magnify_rate = 3;
 /* init GPU states */
 void static gpu_init()
 {
-    bzero(&gpu_state, sizeof(gpu_t));
+    bzero(&gpu, sizeof(gpu_t));
 
     /* Initialize SDL */
     if (SDL_Init(SDL_INIT_VIDEO) < 0 )
@@ -84,19 +84,19 @@ void static gpu_init()
     screenSurface = SDL_GetWindowSurface(window);
 
     /* make gpu field points to the related memory area */
-    gpu_state.lcd_ctrl   = mmu_addr(0xFF40);
-    gpu_state.lcd_status = mmu_addr(0xFF41);
-    gpu_state.scroll_y   = mmu_addr(0xFF42);
-    gpu_state.scroll_x   = mmu_addr(0xFF43);
-    gpu_state.window_y   = mmu_addr(0xFF4A);
-    gpu_state.window_x   = mmu_addr(0xFF4B);
-    gpu_state.ly         = mmu_addr(0xFF44);
-    gpu_state.lyc        = mmu_addr(0xFF45);
-    gpu_if               = mmu_addr(0xFF0F);
+    gpu.lcd_ctrl   = mmu_addr(0xFF40);
+    gpu.lcd_status = mmu_addr(0xFF41);
+    gpu.scroll_y   = mmu_addr(0xFF42);
+    gpu.scroll_x   = mmu_addr(0xFF43);
+    gpu.window_y   = mmu_addr(0xFF4A);
+    gpu.window_x   = mmu_addr(0xFF4B);
+    gpu.ly         = mmu_addr(0xFF44);
+    gpu.lyc        = mmu_addr(0xFF45);
+    gpu_if         = mmu_addr(0xFF0F);
     
     /* start with state 0x02 */
-    (*gpu_state.lcd_status).mode = 0x01;
-    gpu_state.clocks = 200;
+//    (*gpu.lcd_status).mode = 0x02;
+    gpu.clocks = 0;
 }
 
 /* turn on/off lcd */
@@ -106,14 +106,16 @@ void static gpu_toggle(uint8_t state)
     if (state & 0x80)
     {
         /* LCD turned on */
-        // printf("ACCESO\n");
     }
     else
     {
+    //    printf("SPENTO\n");
+
         /* LCD turned off - reset stuff */
-        gpu_state.clocks = 0;
-        *gpu_state.ly = 0;
-        (*gpu_state.lcd_status).mode = 0x00;
+        gpu.clocks = 0;
+        *gpu.ly = 0;
+        (*gpu.lcd_status).mode = 0x00;
+        (*gpu.lcd_status).ly_coincidence = 0x00;
 
         /* first giro */
         // gpu_step(4);
@@ -139,7 +141,7 @@ void static gpu_draw_frame()
             { 
                 for (p=0; p<gpu_magnify_rate; p++)
                     line[p + (x * gpu_magnify_rate)] = 
-                        gpu_state.frame_buffer[x + (y * 160)];
+                        gpu.frame_buffer[x + (y * 160)];
             }
 
             for (p=0; p<gpu_magnify_rate; p++)
@@ -153,11 +155,15 @@ void static gpu_draw_frame()
     else
     {
         /* just copy GPU frame buffer into SDL frame buffer */
-        memcpy(pixel, gpu_state.frame_buffer, 160 * 144 * sizeof(uint32_t));
+        memcpy(pixel, gpu.frame_buffer, 160 * 144 * sizeof(uint32_t));
     }
 
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
+
+    /* reset frame_buffer */
+//     bzero(gpu.frame_buffer, 160 * 144 * sizeof(uint32_t));
+    bzero(gpu.priority, 160 * 144);
 
     return;
 }
@@ -173,13 +179,13 @@ void static gpu_draw_line(uint8_t line)
     uint16_t tile_y;
    
     /* gotta show BG */
-    if ((*gpu_state.lcd_ctrl).bg)
+    if ((*gpu.lcd_ctrl).bg)
     {
         /* get tile map offset */
-        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 
+        tiles_map = mmu_addr((*gpu.lcd_ctrl).bg_tiles_map ? 
                              0x9C00 : 0x9800);
 
-        if ((*gpu_state.lcd_ctrl).bg_tiles)
+        if ((*gpu.lcd_ctrl).bg_tiles)
              tiles_addr = 0x8000;
         else
              tiles_addr = 0x9000;
@@ -188,13 +194,13 @@ void static gpu_draw_line(uint8_t line)
         uint8_t *tiles = mmu_addr(tiles_addr);
 
         /* obtain palette */
-        uint32_t *palette = gpu_state.bg_palette;
+        uint32_t *palette = gpu.bg_palette;
 
         /* calc tile y */
-        tile_y = (*(gpu_state.scroll_y) + line) % 256;
+        tile_y = (*(gpu.scroll_y) + line) % 256;
 
         /* calc first tile idx */
-        tile_idx = ((tile_y >> 3) * 32) + (*(gpu_state.scroll_x) / 8);
+        tile_idx = ((tile_y >> 3) * 32) + (*(gpu.scroll_x) / 8);
 
         /* tile line because if we reach the end of the line,   */
         /* we have to rewind to the first tile of the same line */     
@@ -210,7 +216,7 @@ void static gpu_draw_line(uint8_t line)
         for (t=0; t<21; t++)
         {
             /* resolv tile data memory area */ 
-            if ((*gpu_state.lcd_ctrl).bg_tiles == 0)
+            if ((*gpu.lcd_ctrl).bg_tiles == 0)
                 tile_n = (int8_t) tiles_map[tile_idx];
             else
                 tile_n = (tiles_map[tile_idx] & 0x00ff);
@@ -236,30 +242,30 @@ void static gpu_draw_line(uint8_t line)
             /* (could be shown just a part)             */
             if (t == 0)
             {
-                px_start = (*(gpu_state.scroll_x) % 8);
+                px_start = (*(gpu.scroll_x) % 8);
 
                 px_drawn = 8 - px_start;
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
+                    gpu.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
                         palette[pxa[i]];
 
             }
             else if (t == 20)
             {
-                px_drawn = *(gpu_state.scroll_x) % 8;
+                px_drawn = *(gpu.scroll_x) % 8;
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu_state.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
+                    gpu.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
                         palette[pxa[i + (8 - px_drawn)]];
             } 
             else
             {
                 /* set 8 pixels */
                 for (i=0; i<8; i++)
-                    gpu_state.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
+                    gpu.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
 
                 px_drawn = 8;
             }
@@ -278,23 +284,23 @@ void static gpu_draw_line(uint8_t line)
     }
 
     /* gotta show sprites? */
-    if ((*gpu_state.lcd_ctrl).sprites)
+    if ((*gpu.lcd_ctrl).sprites)
     {
         /* make it point to the first OAM object */
         gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
 
         /* calc sprite height */
-        uint8_t h = ((*gpu_state.lcd_ctrl).sprites_size + 1) * 8;
+        uint8_t h = ((*gpu.lcd_ctrl).sprites_size + 1) * 8;
 
         for (i=0; i<40; i++)
         {
             /* extract sprites that intersect current drawn line */
             if (oam[i].x != 0 && oam[i].y != 0 && 
-                oam[i].x < 168 && oam[i].y < 152 && 
+                oam[i].x < 168 && oam[i].y < 160 && 
                 line < (oam[i].y + h - 16) &&
                 line >= (oam[i].y - 16))
                 gpu_draw_sprite_line(&oam[i], 
-                                     (*gpu_state.lcd_ctrl).sprites_size, line);
+                                     (*gpu.lcd_ctrl).sprites_size, line);
         }
     }
 
@@ -307,7 +313,7 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
                                           uint8_t frame_x, uint8_t frame_y,
                                           uint32_t palette[4], char solid)
 {
-    int i, p, y;
+    int i, p, y, pos;
 
     /* get absolute address of tiles area */
     uint8_t *tiles = mmu_addr(base_address);
@@ -353,7 +359,11 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
             if (frame_x + i >= 160)
                 break;
 
-            gpu_state.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
+            /* calc position on frame buffer */
+            pos = pos_fb + (7 - i);
+
+            if (gpu.priority[pos] == 0)
+                gpu.frame_buffer[pos] = palette[pxa[i]];
         }
     }
 }
@@ -383,9 +393,9 @@ void static gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
 
     /* choose palette */
     if (oam->palette)
-        palette = gpu_state.obj_palette_1;
+        palette = gpu.obj_palette_1;
     else
-        palette = gpu_state.obj_palette_0;
+        palette = gpu.obj_palette_0;
 
     /* calc sprite in byte */
     sprite_bytes = 16 * (sprites_size + 1);
@@ -444,10 +454,13 @@ void static gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
                 continue;
 
             /* dont draw 0-color pixels */
-            if (pxa[i] != 0x00 && 
+            if ((pxa[i] != 0x00) &&
                (oam->priority == 0 || 
-               (oam->priority == 1 && gpu_state.frame_buffer[pos] == palette[0x00])))  
-                gpu_state.frame_buffer[pos] = palette[pxa[i]];
+               (oam->priority == 1 && gpu.frame_buffer[pos] == palette[0x00])))
+            {
+                gpu.frame_buffer[pos] = palette[pxa[i]];
+                gpu.priority[pos] = !oam->priority;
+            }
         }
     }
 }
@@ -461,21 +474,21 @@ void static gpu_update_frame_buffer()
     uint16_t tile_pos_x, tile_pos_y;
 
     /* gotta show BG */
-    if (0 && (*gpu_state.lcd_ctrl).bg)
+    if (0 && (*gpu.lcd_ctrl).bg)
     {
         /* get tile map offset */
-        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
+        tiles_map = mmu_addr((*gpu.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
 
-        if ((*gpu_state.lcd_ctrl).bg_tiles)
+        if ((*gpu.lcd_ctrl).bg_tiles)
              tiles_addr = 0x8000;
         else
              tiles_addr = 0x9000;
 
         /* calc tiles involved */
-        xmin = *(gpu_state.scroll_x) / 8;
+        xmin = *(gpu.scroll_x) / 8;
         xmax = xmin + 21;
 
-        ymin = *(gpu_state.scroll_y) / 8;
+        ymin = *(gpu.scroll_y) / 8;
         ymax = ymin + 19;
 
         for (y=ymin; y<ymax; y++)
@@ -490,20 +503,20 @@ void static gpu_update_frame_buffer()
                 tile_pos_y = (z / 32) * 8;
 
                 /* calc tile number */
-                if ((*gpu_state.lcd_ctrl).bg_tiles == 0)
+                if ((*gpu.lcd_ctrl).bg_tiles == 0)
                      tile_n = (int8_t) tiles_map[z]; 
                 else
                      tile_n = (tiles_map[z] & 0x00ff);
 
                 gpu_draw_tile(tiles_addr, tile_n, 
                               (uint8_t) tile_pos_x, (uint8_t) tile_pos_y, 
-                              gpu_state.bg_palette, 1);
+                              gpu.bg_palette, 1);
             }
         }
     }
 
     /* gotta show sprites? */
-    if (0 && (*gpu_state.lcd_ctrl).sprites)
+    if (0 && (*gpu.lcd_ctrl).sprites)
     {
         /* make it point to the first OAM object */
         gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
@@ -514,36 +527,36 @@ void static gpu_update_frame_buffer()
             {
                 printf("disegno sprite %d in pos %d %d\n", i, oam[i].x, oam[i].y);
 
-               // gpu_draw_sprite_tile(&oam[i], (*gpu_state.lcd_ctrl).sprites_size); 
+                // gpu_draw_sprite_tile(&oam[i], (*gpu.lcd_ctrl).sprites_size); 
             }
         }
     }
 
-    if (0 && gpu_window && (*gpu_state.lcd_ctrl).window)
+    if (gpu_window && (*gpu.lcd_ctrl).window)
     {
         /* gotta really draw a window? check if it is inside screen coordinates */
-        if (*(gpu_state.window_y) >= 144 ||
-            *(gpu_state.window_x) >= 160)
+        if (*(gpu.window_y) >= 144 ||
+            *(gpu.window_x) >= 160)
             return;
 
         /* get tile map offset */
-        tiles_map = mmu_addr((*gpu_state.lcd_ctrl).window_tiles_map ? 0x9C00 : 0x9800);
+        tiles_map = mmu_addr((*gpu.lcd_ctrl).window_tiles_map ? 0x9C00 : 0x9800);
 
         /* window tiles are in this fixed area */
-        if ((*gpu_state.lcd_ctrl).bg_tiles)
+        if ((*gpu.lcd_ctrl).bg_tiles)
              tiles_addr = 0x8000;
         else
              tiles_addr = 0x9000;
 
         for (z=0; z<1024; z++)
         {
-            if ((*gpu_state.lcd_ctrl).bg_tiles == 0)
+            if ((*gpu.lcd_ctrl).bg_tiles == 0)
                  tile_n = (int8_t) tiles_map[z];
             else
                  tile_n = (tiles_map[z] & 0x00ff);
 
-            tile_pos_x = (z % 32) * 8 + *(gpu_state.window_x) - 7;
-            tile_pos_y = (z / 32) * 8 + *(gpu_state.window_y);
+            tile_pos_x = (z % 32) * 8 + *(gpu.window_x) - 7;
+            tile_pos_y = (z / 32) * 8 + *(gpu.window_y);
 
             /* gone over the screen visible X? */
             if (tile_pos_x >= 160)
@@ -555,7 +568,7 @@ void static gpu_update_frame_buffer()
 
             gpu_draw_tile(tiles_addr, tile_n, 
                           (uint8_t) tile_pos_x, (uint8_t) tile_pos_y,
-                          gpu_state.bg_palette, 1);
+                          gpu.bg_palette, 1);
         }
     }
 }
@@ -567,31 +580,31 @@ void static __always_inline gpu_step(uint8_t t)
     char mode_changed = 0;
 
     /* advance only in case of turned on display */
-    if ((*gpu_state.lcd_ctrl).display == 0)
+    if ((*gpu.lcd_ctrl).display == 0)
         return;
 
     /* update clock counter */
-    gpu_state.clocks += t;
+    gpu.clocks += t;
 
     /* take different action based on current state */
-    switch((*gpu_state.lcd_status).mode)
+    switch((*gpu.lcd_status).mode)
     {
         /*
          * during HBLANK (CPU can access VRAM)
          */
         case 0: /* check if an HBLANK is complete (201 t-states) */
-                if (gpu_state.clocks >= 204)
+                if (gpu.clocks >= 204)
                 {
                     /*
                      * if current line == 143 (and it's about to turn 144)
                      * enter mode 01 (VBLANK)
                      */
-                    if (*gpu_state.ly == 143)
+                    if (*gpu.ly == 143)
                     {
                         /* notify mode has changes */
                         mode_changed = 1;
 
-                        (*gpu_state.lcd_status).mode = 0x01;
+                        (*gpu.lcd_status).mode = 0x01;
 
                         /* DRAW! TODO */
                         /* CHECK INTERRUPTS! TODO */
@@ -611,17 +624,17 @@ void static __always_inline gpu_step(uint8_t t)
                         mode_changed = 1;
 
                         /* enter OAM mode */
-                        (*gpu_state.lcd_status).mode = 0x02;
+                        (*gpu.lcd_status).mode = 0x02;
                     }
 
                     /* notify mode has changed */
                     ly_changed = 1;
 
                     /* inc current line */
-                    (*gpu_state.ly)++;
+                    (*gpu.ly)++;
 
                     /* reset clock counter */
-                    gpu_state.clocks -= 204;
+                    gpu.clocks -= 204;
                 }
 
                 break;
@@ -630,25 +643,25 @@ void static __always_inline gpu_step(uint8_t t)
          * during VBLANK (CPU can access VRAM)
          */
         case 1: /* check if an HBLANK is complete (456 t-states) */
-                if (gpu_state.clocks >= 456) 
+                if (gpu.clocks >= 456) 
                 {
                     /* reset clock counter */
-                    gpu_state.clocks -= 456;
+                    gpu.clocks -= 456;
 
                     /* notify ly has changed */
                     ly_changed = 1;
 
                     /* inc current line */
-                    (*gpu_state.ly)++;
+                    (*gpu.ly)++;
 
                     /* reached the bottom? */
-                    if ((*gpu_state.ly) > 153)
+                    if ((*gpu.ly) > 153)
                     {
                         /* go back to line 0 */
-                        (*gpu_state.ly) = 0;
+                        (*gpu.ly) = 0;
 
                         /* switch to OAM mode */
-                        (*gpu_state.lcd_status).mode = 0x02;
+                        (*gpu.lcd_status).mode = 0x02;
                     }
                 }
 
@@ -658,16 +671,16 @@ void static __always_inline gpu_step(uint8_t t)
          * during OAM (LCD access FE00-FE90, so CPU cannot)
          */
         case 2: /* check if an OAM is complete (80 t-states) */
-                if (gpu_state.clocks >= 80)
+                if (gpu.clocks >= 80)
                 {
                     /* reset clock counter */
-                    gpu_state.clocks -= 80;
+                    gpu.clocks -= 80;
 
                     /* notify mode has changed */
                     mode_changed = 1;
 
                     /* switch to VRAM mode */
-                    (*gpu_state.lcd_status).mode = 0x03;
+                    (*gpu.lcd_status).mode = 0x03;
                 }
 
                 break;
@@ -676,16 +689,16 @@ void static __always_inline gpu_step(uint8_t t)
          * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
          */
         case 3: /* check if a VRAM read is complete (172 t-states) */
-                if (gpu_state.clocks >= 172)
+                if (gpu.clocks >= 172)
                 {
                     /* reset clock counter */
-                    gpu_state.clocks -= 172;
+                    gpu.clocks -= 172;
 
                     /* notify mode has changed */
                     mode_changed = 1;
 
                     /* go back to HBLANK mode */
-                    (*gpu_state.lcd_status).mode = 0x00;
+                    (*gpu.lcd_status).mode = 0x00;
                 }
 
                 break;
@@ -699,38 +712,69 @@ void static __always_inline gpu_step(uint8_t t)
         /* values like scroll x or scroll y could change         */
         /* during the draw of a single frame                     */
 
-        if ((*gpu_state.ly) > 0 && (*gpu_state.ly) < 145) 
-            gpu_draw_line((*gpu_state.ly) - 1);
+        if ((*gpu.ly) > 0 && (*gpu.ly) < 145) 
+            gpu_draw_line((*gpu.ly) - 1);
 
         /* check if we gotta trigger an interrupt */
-        if ((*gpu_state.ly) == (*gpu_state.lyc))
+        if ((*gpu.ly) == (*gpu.lyc))
         { 
             /* set lcd status flags indicating there's a concidence */
-            (*gpu_state.lcd_status).ly_coincidence = 1;
+            (*gpu.lcd_status).ly_coincidence = 1;
 
             /* an interrupt is desiderable? */
-            if ((*gpu_state.lcd_status).ir_ly_coincidence)
+            if ((*gpu.lcd_status).ir_ly_coincidence)
                 gpu_if->lcd_ctrl = 1;
         }
         else
         {
             /* set lcd status flags indicating there's NOT a concidence */
-            (*gpu_state.lcd_status).ly_coincidence = 0;
+            (*gpu.lcd_status).ly_coincidence = 0;
         }
     }
 
     /* mode changed? is is the case to trig an interrupt? */
     if (mode_changed)
     {
-        if ((*gpu_state.lcd_status).mode == 0x00 &&
-            (*gpu_state.lcd_status).ir_mode_00)
+        if ((*gpu.lcd_status).mode == 0x00 &&
+            (*gpu.lcd_status).ir_mode_00)
             gpu_if->lcd_ctrl = 1;
-        else if ((*gpu_state.lcd_status).mode == 0x01 &&
-                 (*gpu_state.lcd_status).ir_mode_01)
+        else if ((*gpu.lcd_status).mode == 0x01 &&
+                 (*gpu.lcd_status).ir_mode_01)
             gpu_if->lcd_ctrl = 1;
-        else if ((*gpu_state.lcd_status).mode == 0x02 &&
-                 (*gpu_state.lcd_status).ir_mode_10)
+        else if ((*gpu.lcd_status).mode == 0x02 &&
+                 (*gpu.lcd_status).ir_mode_10)
             gpu_if->lcd_ctrl = 1;
+    }
+}
+
+
+void gpu_write_reg(uint16_t a, uint8_t v)
+{
+    switch (a)
+    {
+        case 0xFF47:
+
+            gpu.bg_palette[0] = gpu_color_lookup[v & 0x03]; 
+            gpu.bg_palette[1] = gpu_color_lookup[(v & 0x0c) >> 2];
+            gpu.bg_palette[2] = gpu_color_lookup[(v & 0x30) >> 4];
+            gpu.bg_palette[3] = gpu_color_lookup[(v & 0xc0) >> 6];
+            break;
+
+        case 0xFF48:
+
+            gpu.obj_palette_0[0] = gpu_color_lookup[v & 0x03]; 
+            gpu.obj_palette_0[1] = gpu_color_lookup[(v & 0x0c) >> 2];
+            gpu.obj_palette_0[2] = gpu_color_lookup[(v & 0x30) >> 4];
+            gpu.obj_palette_0[3] = gpu_color_lookup[(v & 0xc0) >> 6];
+            break;
+
+        case 0xFF49:
+
+            gpu.obj_palette_1[0] = gpu_color_lookup[v & 0x03];
+            gpu.obj_palette_1[1] = gpu_color_lookup[(v & 0x0c) >> 2];
+            gpu.obj_palette_1[2] = gpu_color_lookup[(v & 0x30) >> 4];
+            gpu.obj_palette_1[3] = gpu_color_lookup[(v & 0xc0) >> 6];
+            break;
     }
 }
 
