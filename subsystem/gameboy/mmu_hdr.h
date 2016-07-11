@@ -24,6 +24,7 @@
 
 /* functions prototypes */
 void static __always_inline          *mmu_addr(uint16_t a);
+void static __always_inline           mmu_step(uint8_t t);
 uint8_t static __always_inline        mmu_read_no_cyc(uint16_t a);
 uint8_t static __always_inline        mmu_read(uint16_t a);
 void static __always_inline           mmu_write_no_cyc(uint16_t a, uint8_t v);

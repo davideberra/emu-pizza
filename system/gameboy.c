@@ -390,10 +390,14 @@ static __always_inline uint8_t gameboy_z80_execute(uint8_t op)
 /* entry point for Gameboy emulaton */
 void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 {
-    uint8_t  op;
-    uint8_t  byte;
-    char     file_sav[1024];
-    int      i;
+    uint8_t   op;
+    uint8_t   byte;
+    char      file_sav[1024];
+    int       i;
+    uint32_t  benchmark_cnt = 0;
+    SDL_Event e;
+
+    global_benchmark = 0;
 
     /* init z80 */
     z80_init(); 
@@ -590,47 +594,42 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* and repeat forever                                                  */
     while (!quit)
     {
+
+        if (global_benchmark)
+        {
+            benchmark_cnt++;
+
+            if (benchmark_cnt == 40000000)
+                break;
+        }
+
         /* get op */
         op   = mmu_read(state.pc);
 
-//if (1)  //&& spaces_changed)
-//{
-
-/*    for (i=0;i<spaces;i++)
-        printf(" "); */
-
-/*
- printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", op, *state.f & 0xd0, state.pc, mmu_read_no_cyc(state.pc + 1),
+        /* print out CPU state if enabled by debug flag */
+        if (global_debug)
+        {
+            printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", 
+                                   op, *state.f & 0xd0, state.pc, 
+                                   mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
-                                   mmu_read_no_cyc(state.sp), mmu_read_no_cyc(state.sp + 1));
- printf("A: %02x BC: %04x DE: %04x HL: %04x DFD6: %02x\n", state.a, *state.bc, *state.de, *state.hl, mmu_read_no_cyc(0xdfd6));
-*/
+                                   mmu_read_no_cyc(state.sp), 
+                                   mmu_read_no_cyc(state.sp + 1));
 
-// printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %04x FF41: %04x FF44: %04x\n", state.a, *state.bc, *state.de, *state.hl, 
-//    mmu_read_no_cyc(0xff40), mmu_read_no_cyc(0xff41), mmu_read_no_cyc(0xff44)); 
+            printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, 
+                                   *state.de, *state.hl);
+        }
 
-
-// mmu_read_no_cyc(0xFF44), mmu_read_no_cyc(0xFF40));
-
-       
-    /*r++;
-    spaces_changed = 0;
-}*/
-		// continue;
-		
-        /* override classic Z80 instruction with GB Z80 version */
-        // if (gameboy_z80_execute(op) != 0)
-            z80_execute(op);
+        /* execute instruction by the GB Z80 version */
+        z80_execute(op);
 
         /* keep low bits always set to zero */
         *state.f &= 0xf0;
 
-        /* if last op was Interrupt Enable (0xFB), we need to check for INTR on next cycle */
-        // if (op == 0xFB)
-        //     continue;
-
-        // if (*int_e & 0x10)
-        //     printf("PAD INTERRUPT ENABLED\n");
+        /* if last op was Interrupt Enable (0xFB)  */
+        /* we need to check for INTR on next cycle */
+        if (op == 0xFB)
+            continue;
 
         /* interrupts filtered by enable flags */
         uint8_t int_r = (*int_f & *int_e);
@@ -693,18 +692,23 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
             } 
         }
 
-        /* aaaaaaaaaaaaaand finally, check for SDL events */
-  /*      SDL_Event e;
-
-        while (SDL_PollEvent(&e))
+        /* check it once in a while, otherwise it will slow down way too much */
+        if (cycles_cnt % 65536 == 0)
         {
-            switch (e.type)
+            /* aaaaaaaaaaaaaand finally, check for SDL events */
+            while (SDL_PollEvent(&e))
             {
-                case SDL_QUIT:
-                    quit = 1;
-                    break;
-            }
-        }  */
+                switch (e.type)
+                {
+                    case SDL_QUIT:
+                        quit = 1;
+                        break;
+                    case SDL_KEYDOWN:
+                        if (e.key.keysym.sym == SDLK_d)
+                            global_debug ^= 0x01;
+                }
+            }  
+        }
     }
 
     mmu_save_ram(file_sav);

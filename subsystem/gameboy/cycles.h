@@ -20,6 +20,7 @@
 #ifndef __CYCLES__
 #define __CYCLES__
 
+#include "subsystem/gameboy/globals.h"
 #include "subsystem/gameboy/gpu_hdr.h"
 #include "subsystem/gameboy/serial_hdr.h"
 #include "subsystem/gameboy/timer_hdr.h"
@@ -29,9 +30,8 @@
 struct itimerspec cycles_timer;
 timer_t           cycles_timer_id = 0;
 sem_t             cycles_sem;
-    struct sigevent   te;
-    struct sigaction  sa;
-
+struct sigevent   cycles_te;
+struct sigaction  cycles_sa;
 
 /* internal prototype for timer handler */
 void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
@@ -45,7 +45,7 @@ void static __always_inline cycles_step(uint8_t s)
     /* 65536 == cpu clock / 64 pauses every second */
     if (cycles_cnt % (cycles_clock / 64) == 0)
     {
-        while (1)
+        while (global_benchmark == 0)
         {
             int res;
 
@@ -64,6 +64,9 @@ void static __always_inline cycles_step(uint8_t s)
     if (cycles_cnt == cycles_clock)
         cycles_cnt = 0;
 
+    /* update memory state (for DMA) */
+    mmu_step(s);
+
     /* update GPU state */
     gpu_step(s);
 
@@ -74,7 +77,8 @@ void static __always_inline cycles_step(uint8_t s)
     serial_step(s);
 
     /* and finally sound */
-    sound_step(s);
+    if (global_benchmark == 0)
+        sound_step(s);
 }
 
 char cycles_init()
@@ -83,18 +87,18 @@ char cycles_init()
     sem_init(&cycles_sem, 0, 0);
 
     /* prepare timer to emulate video refresh interrupts */
-    sa.sa_flags = SA_SIGINFO;
-    sa.sa_sigaction = cycles_timer_handler;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGRTMIN, &sa, NULL) == -1)
+    cycles_sa.sa_flags = SA_SIGINFO;
+    cycles_sa.sa_sigaction = cycles_timer_handler;
+    sigemptyset(&cycles_sa.sa_mask);
+    if (sigaction(SIGRTMIN, &cycles_sa, NULL) == -1)
         return 1;
-    bzero(&te, sizeof(struct sigevent));
+    bzero(&cycles_te, sizeof(struct sigevent));
 
     /* set and enable alarm */
-    te.sigev_notify = SIGEV_SIGNAL;
-    te.sigev_signo = SIGRTMIN;
-    te.sigev_value.sival_ptr = &cycles_timer_id;
-    timer_create(CLOCK_REALTIME, &te, &cycles_timer_id);
+    cycles_te.sigev_notify = SIGEV_SIGNAL;
+    cycles_te.sigev_signo = SIGRTMIN;
+    cycles_te.sigev_value.sival_ptr = &cycles_timer_id;
+    timer_create(CLOCK_REALTIME, &cycles_te, &cycles_timer_id);
 
     /* initialize 64 hits per second timer */
     cycles_timer.it_value.tv_sec = 1;

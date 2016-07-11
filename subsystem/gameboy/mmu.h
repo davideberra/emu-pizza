@@ -66,6 +66,10 @@ uint8_t ram_current_bank = 0;
 /* banking mode - 0 ROM, 1 RAM */
 uint8_t banking = 0;
 
+/* DMA counter and address */
+uint16_t mmu_dma_address = 0;
+uint16_t mmu_dma_cycles = 0;
+
 /* init (alloc) system state.memory */
 void static mmu_init(uint8_t c, uint8_t rn)
 {
@@ -85,6 +89,24 @@ void static mmu_init_ram(uint32_t c)
     ram = malloc(c);
 
     bzero(ram, c);
+}
+
+/* update DMA internal state given CPU T-states */
+void static __always_inline mmu_step(uint8_t t)
+{
+    if (mmu_dma_address != 0x00)
+    {
+        mmu_dma_cycles -= 4;
+    
+        /* enough cycles passed? */
+        if (mmu_dma_cycles == 0)
+        {
+            memcpy(&memory[0xFE00], &memory[mmu_dma_address], 160);
+
+            /* reset address */
+            mmu_dma_address = 0x00;
+        }
+    }
 }
 
 /* load data in a certain address */
@@ -112,8 +134,6 @@ void static __always_inline mmu_move(uint16_t d, uint16_t s)
 /* return absolute memory address */
 void static __always_inline *mmu_addr(uint16_t a)
 {
-//    cycles_step();
-
     return (void *) &memory[a];
 }
 
@@ -191,8 +211,9 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                  
                            if (b != rom_current_bank)
                            {
-                                /* copy! */
-                                memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+                                /* copy new rom bank! */
+                                memcpy(&memory[0x4000], 
+                                       &cart_memory[b * 0x4000], 0x4000);
                            }
                           
                            rom_current_bank = b;
@@ -217,7 +238,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                                if (b != rom_current_bank)
                                {
                                    /* copy! */
-                                   memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+                                   memcpy(&memory[0x4000], 
+                                          &cart_memory[b * 0x4000], 0x4000);
                                }
 
                                rom_current_bank = b;
@@ -233,7 +255,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                                    ram_current_bank = v;
 
                                    /* move new ram bank */
-                                   memcpy(&memory[0xA000], &ram[0x2000 * ram_current_bank], 
+                                   memcpy(&memory[0xA000], 
+                                          &ram[0x2000 * ram_current_bank], 
                                           0x2000);
                                }
                            }
@@ -255,7 +278,8 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
                            uint8_t b = v & 0x0f;
 
                            if (b != rom_current_bank)
-                                   memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+                               memcpy(&memory[0x4000], 
+                                      &cart_memory[b * 0x4000], 0x4000);
 
                            rom_current_bank = b;
                        }
@@ -263,6 +287,9 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 
         return; 
     }
+
+    if (a >= 0xE000)
+    {
 
     /* changes on sound registers? */
     if (a >= 0xFF10 && a <= 0xFF26)
@@ -276,27 +303,12 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
         return;
     }
 
+    /* mirror area */
     if (a >= 0xE000 && a <= 0xFDFF)
     {
         memory[a - 0x2000] = v;
         return;
     } 
-
-    /* accessing VRAM */
-/*    if (a >= 0x8000 && a <= 0x9FFF)
-    {
-        if ((*gpu_state.lcd_status).mode == 0x03)
-            return; 
-
-    } */
-
-    /* accessing OAM */
-/*    if (a >= 0xFE00 && a <= 0xFE9F)
-    {
-        if ((*gpu_state.lcd_status).mode == 0x02 || 
-            (*gpu_state.lcd_status).mode == 0x03)
-            return;
-    } */
 
     /* resetting timer DIV */
     if (a == 0xFF04)
@@ -322,49 +334,15 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     /* DMA access */
     if (a == 0xFF46)
     {
-        uint16_t src = v * 256;
+        /* calc source address */ 
+        mmu_dma_address = v * 256;
 
-        /* copy an entire block of memory into OAM area */
-        memcpy(&memory[0xFE00], &memory[src], 160);
-    } 
-
-/*
-    if (a == 0xFF47)
-    {
-        gpu_state.bg_palette[0] = gpu_color_lookup[v & 0x03];
-        gpu_state.bg_palette[1] = gpu_color_lookup[(v & 0x0c) >> 2];
-        gpu_state.bg_palette[2] = gpu_color_lookup[(v & 0x30) >> 4];
-        gpu_state.bg_palette[3] = gpu_color_lookup[(v & 0xc0) >> 6];
+        /* initialize counter, DMA needs 672 ticks */
+        mmu_dma_cycles = 168;
     }
-
-    if (a == 0xFF48)
-    {
-        gpu_state.obj_palette_0[0] = gpu_color_lookup[v & 0x03];
-        gpu_state.obj_palette_0[1] = gpu_color_lookup[(v & 0x0c) >> 2];
-        gpu_state.obj_palette_0[2] = gpu_color_lookup[(v & 0x30) >> 4];
-        gpu_state.obj_palette_0[3] = gpu_color_lookup[(v & 0xc0) >> 6];
     }
-
-    if (a == 0xFF49)
-    {
-        gpu_state.obj_palette_1[0] = gpu_color_lookup[v & 0x03];
-        gpu_state.obj_palette_1[1] = gpu_color_lookup[(v & 0x0c) >> 2];
-        gpu_state.obj_palette_1[2] = gpu_color_lookup[(v & 0x30) >> 4];
-        gpu_state.obj_palette_1[3] = gpu_color_lookup[(v & 0xc0) >> 6];
-    }
-*/
-
-    if (0 && a == 0xFF40)
-    {
-/*            printf("BG: %d - Sprites: %d - Sp Size: %d - BG Tile Map: %d\n",
-                   (*gpu_state.lcd_ctrl).bg, (*gpu_state.lcd_ctrl).sprites,
-                   (*gpu_state.lcd_ctrl).sprites_size,
-                   (*gpu_state.lcd_ctrl).bg_tiles_map);
-
-            printf("BG TILES: %d - Window: %d - Window tile: %d - Display: %d\n",
-                   (*gpu_state.lcd_ctrl).bg_tiles, (*gpu_state.lcd_ctrl).window,
-                   (*gpu_state.lcd_ctrl).window_tiles_map, (*gpu_state.lcd_ctrl).display); */
-    }
+    else
+        memory[a] = v; 
 }
 
 /* read 16 bit data from a memory addres */

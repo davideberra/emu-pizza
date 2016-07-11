@@ -1,6 +1,6 @@
 SRCS=$(wildcard *.c)
 # SRCS=gameboy.c
-CFLAGS=-Wall -I.. -c -pthread  -g3
+CFLAGS=-I.. -c -pthread -O3 -w
 CPU_HEADERS=$(wildcard ../cpu/*.h)
 
 all: $(CPU_HEADERS) exercize_z80.o

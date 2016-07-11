@@ -35,14 +35,14 @@ SDL_AudioSpec desired;
 SDL_AudioSpec obtained;
 
 /* */
-#define SOUND_SAMPLES 512
+#define SOUND_SAMPLES 1024
 #define SOUND_BUF_SZ  65536
 #define SOUND_FREQ    48000
 
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
 size_t   sound_buf_wr;
-size_t   sound_buf_available;
+int      sound_buf_available;
 
 /* CPU cycles to internal cycles counters */
 uint32_t sound_fs_cycles;
@@ -107,6 +107,9 @@ void static sound_init()
     sound.channel_three_nr34 = (channel_three_nr34_t *) mmu_addr(0xFF1E);
 
     sound.wave_table = mmu_addr(0xFF30);
+
+    /* available samples */
+    sound_buf_available = 0;
 
     /* init semaphore for 60hz sync */
     pthread_mutex_init(&sound_mutex, NULL);
@@ -306,9 +309,10 @@ void sound_push_sample(int16_t s)
     sound_buf_available++;
 
     /* if it's locked and we got enough samples, unlock */
-    if (sound_buffer_empty && sound_buf_available == SOUND_SAMPLES)
+    if (sound_buffer_empty && sound_buf_available == SOUND_SAMPLES * 2)
     {
         sound_buffer_empty = 0;
+
         pthread_cond_signal(&sound_cond); 
     }
 
@@ -337,23 +341,23 @@ size_t sound_available_samples()
 /* read a block of data from circular buffer */
 void sound_read_samples(int len, int16_t *buf)
 {
-//     size_t available_samples;
     int to_read = len;
+
+    if (global_benchmark)
+    {
+        sound_buf_rd = sound_buf_wr; 
+        return;
+    }
 
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
     
-/*    if (sound_buf_rd > sound_buf_wr)
-        available_samples = sound_buf_wr + SOUND_BUF_SZ - sound_buf_rd;
-    else
-        available_samples = sound_buf_wr - sound_buf_rd; */
-
     /* not enough samples? read what we got */
-    if (sound_buf_available < len)
+    if (sound_buf_available < to_read)
     {
         /* stop until we got enough samples */
         sound_buffer_empty = 1;
- 
+
         while (sound_buffer_empty == 1)
             pthread_cond_wait(&sound_cond, &sound_mutex);
     }
@@ -383,13 +387,13 @@ void sound_read_samples(int len, int16_t *buf)
     {
         /* unlock write thread */
         sound_buffer_full = 0;
- 
+
         /* send a signal */
         pthread_cond_signal(&sound_cond);
     }
 
     /* update avaiable samples */
-    sound_buf_available -= len;
+    sound_buf_available -= to_read;
 
     /* unlock the buffer */
     pthread_mutex_unlock(&sound_mutex);

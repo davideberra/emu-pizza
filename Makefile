@@ -1,7 +1,12 @@
 GTK_CFLAGS=`pkg-config --cflags gtk+-3.0`
 GTK_LIBS=`pkg-config --libs gtk+-3.0`
 CFLAGS=-lpthread -O2 -fomit-frame-pointer
-LIBS=-lrt -lSDL2
+ifeq ($(OS),Windows_NT)
+    LIBS=-lrt /usr/local/lib/libSDL2.dll.a 
+    CFLAGS+=-w
+else
+    LIBS=-lrt -lSDL2
+endif
 
 CPU_OBJS=$(patsubst %.c,%.o,$(wildcard cpu/*.c))
 SYSTEM_OBJS=$(patsubst %.c,%.o,$(wildcard system/*.c))

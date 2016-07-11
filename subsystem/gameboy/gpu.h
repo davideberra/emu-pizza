@@ -106,21 +106,25 @@ void static gpu_toggle(uint8_t state)
     if (state & 0x80)
     {
         /* LCD turned on */
+        gpu.clocks = 0;
+        *gpu.ly  = 0;
+        *gpu.lyc = 0;
+        (*gpu.lcd_status).mode = 0x00;
+        (*gpu.lcd_status).ly_coincidence = 0x00;
     }
     else
     {
-    //    printf("SPENTO\n");
-
         /* LCD turned off - reset stuff */
         gpu.clocks = 0;
         *gpu.ly = 0;
-        (*gpu.lcd_status).mode = 0x00;
-        (*gpu.lcd_status).ly_coincidence = 0x00;
+        //(*gpu.lcd_status).mode = 0x02;
+        //(*gpu.lcd_status).ly_coincidence = 0x00;
 
         /* first giro */
         // gpu_step(4);
     }
 
+    
 } 
 
 /* push frame on screen */
@@ -161,8 +165,7 @@ void static gpu_draw_frame()
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
 
-    /* reset frame_buffer */
-//     bzero(gpu.frame_buffer, 160 * 144 * sizeof(uint32_t));
+    /* reset priority matrix */
     bzero(gpu.priority, 160 * 144);
 
     return;
@@ -177,7 +180,7 @@ void static gpu_draw_line(uint8_t line)
     uint8_t *tiles_map, tile_subline;
     uint16_t tiles_addr, tile_n, tile_idx, tile_line;
     uint16_t tile_y;
-   
+  
     /* gotta show BG */
     if ((*gpu.lcd_ctrl).bg)
     {
@@ -229,13 +232,16 @@ void static gpu_draw_line(uint8_t line)
             /* bit 1 of the pixel is taken from odd position tile bytes  */
 
             uint8_t  pxa[8];
+            uint8_t  shft;
+            uint8_t  b1 = *(tiles + tile_ptr);
+            uint8_t  b2 = *(tiles + tile_ptr + 1);
 
             for (y=0; y<8; y++)
             {
-                 uint8_t shft = (1 << y);
+                 shft = (1 << y);
 
-                 pxa[y] = ((*(tiles + tile_ptr) & shft) ? 1 : 0) |
-                          ((*(tiles + tile_ptr + 1) & shft) ? 2 : 0);
+                 pxa[y] = ((b1 & shft) ? 1 : 0) |
+                          ((b2 & shft) ? 2 : 0);
             }
 
             /* particular cases for first and last tile */ 
@@ -250,7 +256,6 @@ void static gpu_draw_line(uint8_t line)
                 for (i=0; i<px_drawn; i++)
                     gpu.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
                         palette[pxa[i]];
-
             }
             else if (t == 20)
             {
@@ -534,13 +539,14 @@ void static gpu_update_frame_buffer()
 
     if (gpu_window && (*gpu.lcd_ctrl).window)
     {
-        /* gotta really draw a window? check if it is inside screen coordinates */
+        /* gotta draw a window? check if it is inside screen coordinates */
         if (*(gpu.window_y) >= 144 ||
             *(gpu.window_x) >= 160)
             return;
 
         /* get tile map offset */
-        tiles_map = mmu_addr((*gpu.lcd_ctrl).window_tiles_map ? 0x9C00 : 0x9800);
+        tiles_map = mmu_addr((*gpu.lcd_ctrl).window_tiles_map ? 
+                             0x9C00 : 0x9800);
 
         /* window tiles are in this fixed area */
         if ((*gpu.lcd_ctrl).bg_tiles)
@@ -699,6 +705,9 @@ void static __always_inline gpu_step(uint8_t t)
 
                     /* go back to HBLANK mode */
                     (*gpu.lcd_status).mode = 0x00;
+
+                    /* draw line */
+                    gpu_draw_line(*gpu.ly);
                 }
 
                 break;
@@ -708,13 +717,6 @@ void static __always_inline gpu_step(uint8_t t)
     /* ly changed? is it the case to trig an interrupt? */
     if (ly_changed)
     {
-        /* update prev line - IT MUST BE DONE EVERY LINE because */
-        /* values like scroll x or scroll y could change         */
-        /* during the draw of a single frame                     */
-
-        if ((*gpu.ly) > 0 && (*gpu.ly) < 145) 
-            gpu_draw_line((*gpu.ly) - 1);
-
         /* check if we gotta trigger an interrupt */
         if ((*gpu.ly) == (*gpu.lyc))
         { 

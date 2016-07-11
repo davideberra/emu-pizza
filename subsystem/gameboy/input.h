@@ -48,11 +48,11 @@ uint8_t input_get_keys(uint8_t line)
         return 0;
     }
 
-    if (kb_state[SDL_SCANCODE_W])
+    /*if (kb_state[SDL_SCANCODE_W])
         gpu_window ^= 0x01;
 
-    if (kb_state[SDL_SCANCODE_L])
-        log_active ^= 0x01;
+    if (kb_state[SDL_SCANCODE_D])
+        global_debug ^= 0x01; */
 
     if ((line & 0x30) == 0x20)
     { 

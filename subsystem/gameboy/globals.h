@@ -22,6 +22,7 @@
 
 static char quit = 0;
 static char gpu_window = 1;
-static char log_active = 0;
+static char global_debug = 0;
+static char global_benchmark = 0;
 
 #endif
