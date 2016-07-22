@@ -160,6 +160,10 @@ uint8_t static __always_inline mmu_read(uint16_t a)
     if (a >= 0xE000 && a <= 0xFDFF)
         return memory[a - 0x2000];
 
+    /* changes on sound registers? */
+    if (a >= 0xFF10 && a <= 0xFF3F)
+        return sound_read_reg(a, memory[a]);
+
     return memory[a];
 }
 
@@ -191,98 +195,96 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
             case 0x02:  
             case 0x03: 
 
-                       if (a >= 0x2000 && a <= 0x3FFF) 
-                       {
-                           /* reset 5 bits */
-                           uint8_t b = rom_current_bank & 0xE0;
+                if (a >= 0x2000 && a <= 0x3FFF) 
+                {
+                    /* reset 5 bits */
+                    uint8_t b = rom_current_bank & 0xE0;
 
-                           /* set them with new value */
-                           b |= v & 0x1F;
+                    /* set them with new value */
+                    b |= v & 0x1F;
 
-                           /* filter with max ROM available */
-                           uint8_t filter = 0xFF >> (7 - roms);
+                    /* filter with max ROM available */
+                    uint8_t filter = 0xFF >> (7 - roms);
 
-                           /* filter result to get a value < max rom number */
-                           b &= filter;
+                    /* filter result to get a value < max rom number */
+                    b &= filter;
 
-                           /* 0x00 is not valid, switch it to 0x01 */
-                           if (b == 0x00)
-                               b = 0x01;
+                    /* 0x00 is not valid, switch it to 0x01 */
+                    if (b == 0x00)
+                        b = 0x01;
                  
-                           if (b != rom_current_bank)
-                           {
-                                /* copy new rom bank! */
-                                memcpy(&memory[0x4000], 
-                                       &cart_memory[b * 0x4000], 0x4000);
-                           }
+                    if (b != rom_current_bank)
+                    {
+                        /* copy new rom bank! */
+                        memcpy(&memory[0x4000], 
+                               &cart_memory[b * 0x4000], 0x4000);
+                    }
                           
-                           rom_current_bank = b;
-                       }
-                       else if (a >= 0x4000 && a <= 0x5FFF)
-                       {
-                           /* ROM banking? it's about 2 higher bits */
-                           if (banking == 0)
-                           {
-                               /* reset 5 bits */
-                               uint8_t b = rom_current_bank & 0x1F;
+                    rom_current_bank = b;
+                }
+                else if (a >= 0x4000 && a <= 0x5FFF)
+                {
+                    /* ROM banking? it's about 2 higher bits */
+                    if (banking == 0)
+                    {
+                        /* reset 5 bits */
+                        uint8_t b = rom_current_bank & 0x1F;
 
-                               /* set them with new value */
-                               b |= (v << 5);
+                        /* set them with new value */
+                        b |= (v << 5);
 
-                               /* filter with max ROM available */
-                               uint8_t filter = 0xFF >> (7 - roms);
+                        /* filter with max ROM available */
+                        uint8_t filter = 0xFF >> (7 - roms);
 
-                               /* filter result to get a value < max rom number */
-                               b &= filter;
+                        /* filter result to get a value < max rom number */
+                        b &= filter;
 
-                               if (b != rom_current_bank)
-                               {
-                                   /* copy! */
-                                   memcpy(&memory[0x4000], 
-                                          &cart_memory[b * 0x4000], 0x4000);
-                               }
+                        if (b != rom_current_bank)
+                        {
+                            /* copy! */
+                            memcpy(&memory[0x4000], 
+                                   &cart_memory[b * 0x4000], 0x4000);
+                        }
 
-                               rom_current_bank = b;
-                           }
-                           else
-                           {
-                               if ((0x2000 * v) < ram_sz)
-                               { 
-                                   /* save current bank */
-                                   memcpy(&ram[0x2000 * ram_current_bank], 
-                                          &memory[0xA000], 0x2000);
+                        rom_current_bank = b;
+                    }
+                    else
+                    {
+                        if ((0x2000 * v) < ram_sz)
+                        { 
+                            /* save current bank */
+                            memcpy(&ram[0x2000 * ram_current_bank], 
+                                   &memory[0xA000], 0x2000);
   
-                                   ram_current_bank = v;
+                            ram_current_bank = v;
 
-                                   /* move new ram bank */
-                                   memcpy(&memory[0xA000], 
-                                          &ram[0x2000 * ram_current_bank], 
-                                          0x2000);
-                               }
-                           }
-                       }
-                       else if (a >= 0x6000 && a <= 0x7FFF)
-                       {
-                           banking = v;
-                       }
+                            /* move new ram bank */
+                            memcpy(&memory[0xA000], 
+                                   &ram[0x2000 * ram_current_bank], 
+                                   0x2000);
+                        }
+                    }
+                }
+                else if (a >= 0x6000 && a <= 0x7FFF)
+                    banking = v;
 
-                       break;
+                break;
 
             /* MBC2 */
             case 0x05:
             case 0x06: 
 
-                       if (a >= 0x2000 && a <= 0x3FFF) 
-                       {
-                           /* use lower nibble to set current bank */
-                           uint8_t b = v & 0x0f;
+                if (a >= 0x2000 && a <= 0x3FFF) 
+                {
+                    /* use lower nibble to set current bank */
+                    uint8_t b = v & 0x0f;
 
-                           if (b != rom_current_bank)
-                               memcpy(&memory[0x4000], 
-                                      &cart_memory[b * 0x4000], 0x4000);
+                    if (b != rom_current_bank)
+                        memcpy(&memory[0x4000], 
+                               &cart_memory[b * 0x4000], 0x4000);
 
-                           rom_current_bank = b;
-                       }
+                    rom_current_bank = b;
+                }
         }
 
         return; 
@@ -290,56 +292,52 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 
     if (a >= 0xE000)
     {
+        /* changes on sound registers? */
+        if (a >= 0xFF10 && a <= 0xFF26)
+        {
+            /* set memory */
+            sound_write_reg(a, v);
 
-    /* changes on sound registers? */
-    if (a >= 0xFF10 && a <= 0xFF26)
-    {
-        /* set memory */
+            return;
+        }
+
+        /* mirror area */
+        if (a >= 0xE000 && a <= 0xFDFF)
+        {
+            memory[a - 0x2000] = v;
+            return;
+        } 
+
+        /* resetting timer DIV */
+        if (a == 0xFF04)
+        {
+            memory[a] = 0x00;
+            return;
+        }
+
+        /* LCD turned on/off? */
+        if (a == 0xFF40)
+        {
+            if ((v ^ memory[0xFF40]) & 0x80)
+                gpu_toggle(v);
+        }
+
+        /* palette update */
+        if (a >= 0xFF47 && a <= 0xFF49)
+            gpu_write_reg(a, v);
+
+        /* finally set memory byte with data */
         memory[a] = v;
 
-        /* then generate samples! */
-        sound_write_reg(a, v);
+        /* DMA access */
+        if (a == 0xFF46)
+        {
+            /* calc source address */ 
+            mmu_dma_address = v * 256;
 
-        return;
-    }
-
-    /* mirror area */
-    if (a >= 0xE000 && a <= 0xFDFF)
-    {
-        memory[a - 0x2000] = v;
-        return;
-    } 
-
-    /* resetting timer DIV */
-    if (a == 0xFF04)
-    {
-        memory[a] = 0x00;
-        return;
-    }
-
-    /* LCD turned on/off? */
-    if (a == 0xFF40)
-    {
-        if ((v ^ memory[0xFF40]) & 0x80)
-            gpu_toggle(v);
-    }
-
-    /* palette update */
-    if (a >= 0xFF47 && a <= 0xFF49)
-        gpu_write_reg(a, v);
-
-    /* finally set memory byte with data */
-    memory[a] = v;
-
-    /* DMA access */
-    if (a == 0xFF46)
-    {
-        /* calc source address */ 
-        mmu_dma_address = v * 256;
-
-        /* initialize counter, DMA needs 672 ticks */
-        mmu_dma_cycles = 168;
-    }
+            /* initialize counter, DMA needs 672 ticks */
+            mmu_dma_cycles = 168;
+        }
     }
     else
         memory[a] = v; 

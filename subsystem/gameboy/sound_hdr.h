@@ -126,10 +126,53 @@ typedef struct channel_three_nr24_s
 
 } channel_three_nr34_t;
 
+typedef struct channel_four_nr41_s
+{
+    uint8_t length_load:6;
+    uint8_t spare:2;
+
+} channel_four_nr41_t;
+
+typedef struct channel_four_nr42_s
+{
+    uint8_t period:3;
+    uint8_t add:1;
+    uint8_t volume:4;
+
+} channel_four_nr42_t;
+
+typedef struct channel_four_nr44_s
+{
+    uint8_t spare:6;
+    uint8_t length_enable:1;
+    uint8_t trigger:1;
+
+} channel_four_nr44_t;
+
+typedef struct nr50_s
+{
+    uint8_t so1_volume:3;
+    uint8_t vin_to_so1:1;
+    uint8_t so2_volume:3;
+    uint8_t vin_to_so2:1;
+} nr50_t;
+
+typedef struct nr51_s
+{
+    uint8_t ch1_to_so1:1;
+    uint8_t ch2_to_so1:1;
+    uint8_t ch3_to_so1:1;
+    uint8_t ch4_to_so1:1;
+    uint8_t ch1_to_so2:1;
+    uint8_t ch2_to_so2:1;
+    uint8_t ch3_to_so2:1;
+    uint8_t ch4_to_so2:1;
+} nr51_t;
 
 typedef struct nr52_s
 {
-    
+    uint8_t spare:7;
+    uint8_t power:1;    
 } nr52_t;
 
 typedef struct channel_square_s
@@ -163,6 +206,13 @@ typedef struct channel_wave_s
 
 } channel_wave_t;
 
+typedef struct channel_noise_s
+{
+    uint8_t  active;
+    uint32_t length;
+
+} channel_noise_t;
+
 typedef struct sound_s
 {
     channel_one_nr10_t   *channel_one_nr10;
@@ -182,11 +232,20 @@ typedef struct sound_s
     channel_three_nr33_t *channel_three_nr33;
     channel_three_nr34_t *channel_three_nr34;
 
+    channel_four_nr41_t  *channel_four_nr41;
+    channel_four_nr42_t  *channel_four_nr42;
+    channel_four_nr44_t  *channel_four_nr44;
+
+    nr50_t               *nr50;
+    nr51_t               *nr51;
+    nr52_t               *nr52;
+
     uint8_t              *wave_table;
 
     channel_square_t      channel_one;    
     channel_square_t      channel_two;    
     channel_wave_t        channel_three;
+    channel_noise_t       channel_four;
 
     uint32_t              fs_cycles;
 
@@ -194,6 +253,10 @@ typedef struct sound_s
 
 /* super global for audio controller */
 sound_t sound;
+
+/* prototype */
+void    static __always_inline sound_write_reg(uint16_t a, uint8_t v);
+uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v);
 
 #endif
 

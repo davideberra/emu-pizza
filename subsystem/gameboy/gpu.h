@@ -108,7 +108,6 @@ void static gpu_toggle(uint8_t state)
         /* LCD turned on */
         gpu.clocks = 0;
         *gpu.ly  = 0;
-        *gpu.lyc = 0;
         (*gpu.lcd_status).mode = 0x00;
         (*gpu.lcd_status).ly_coincidence = 0x00;
     }
@@ -284,7 +283,6 @@ void static gpu_draw_line(uint8_t line)
 
             /* go to the next block of 8 pixels of the frame buffer */
             pos_fb += px_drawn;
-
         }
     }
 
@@ -520,24 +518,7 @@ void static gpu_update_frame_buffer()
         }
     }
 
-    /* gotta show sprites? */
-    if (0 && (*gpu.lcd_ctrl).sprites)
-    {
-        /* make it point to the first OAM object */
-        gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
-
-        for (i=0; i<40; i++)
-        {
-            if (oam[i].x != 0 && oam[i].y != 0 && oam[i].x < 168 && oam[i].y < 152)
-            {
-                printf("disegno sprite %d in pos %d %d\n", i, oam[i].x, oam[i].y);
-
-                // gpu_draw_sprite_tile(&oam[i], (*gpu.lcd_ctrl).sprites_size); 
-            }
-        }
-    }
-
-    if (gpu_window && (*gpu.lcd_ctrl).window)
+    if (global_window && (*gpu.lcd_ctrl).window)
     {
         /* gotta draw a window? check if it is inside screen coordinates */
         if (*(gpu.window_y) >= 144 ||

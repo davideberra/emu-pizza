@@ -592,7 +592,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* mechanism is simple.                                                */
     /* 1) execute instruction 2) update cycles counter 3) check interrupts */
     /* and repeat forever                                                  */
-    while (!quit)
+    while (!global_quit)
     {
 
         if (global_benchmark)
@@ -701,11 +701,13 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
                 switch (e.type)
                 {
                     case SDL_QUIT:
-                        quit = 1;
+                        global_quit = 1;
                         break;
                     case SDL_KEYDOWN:
                         if (e.key.keysym.sym == SDLK_d)
                             global_debug ^= 0x01;
+                        else if (e.key.keysym.sym == SDLK_w)
+                            global_window ^= 0x01;
                 }
             }  
         }

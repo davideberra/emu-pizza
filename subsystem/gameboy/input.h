@@ -44,7 +44,7 @@ uint8_t input_get_keys(uint8_t line)
     /* check if Q is pressed */
     if (kb_state[SDL_SCANCODE_Q])
     {
-        quit = 1;
+        global_quit = 1;
         return 0;
     }
 

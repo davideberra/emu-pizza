@@ -3,7 +3,7 @@ GTK_LIBS=`pkg-config --libs gtk+-3.0`
 CFLAGS=-lpthread -O2 -fomit-frame-pointer
 ifeq ($(OS),Windows_NT)
     LIBS=-lrt /usr/local/lib/libSDL2.dll.a 
-    CFLAGS+=-w
+    CFLAGS+=-w 
 else
     LIBS=-lrt -lSDL2
 endif

@@ -42,7 +42,7 @@ SDL_AudioSpec obtained;
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
 size_t   sound_buf_wr;
-int      sound_buf_available;
+int      sound_buf_available = 0;
 
 /* CPU cycles to internal cycles counters */
 uint32_t sound_fs_cycles;
@@ -72,9 +72,9 @@ void static sound_init()
 {
     SDL_Init(SDL_INIT_AUDIO);
     desired.freq = SOUND_FREQ;
-    desired.samples = SOUND_SAMPLES * 2; 
+    desired.samples = SOUND_SAMPLES; 
     desired.format = AUDIO_S16SYS;
-    desired.channels = 1;
+    desired.channels = 2;
     desired.callback = sound_read_buffer;
     desired.userdata = NULL;
 
@@ -84,7 +84,7 @@ void static sound_init()
     else
     {
         printf("Cannot open audio device\n");
-        quit = 1;
+        global_quit = 1;
         return;
     }
 
@@ -105,6 +105,14 @@ void static sound_init()
     sound.channel_three_nr32 = (channel_three_nr32_t *) mmu_addr(0xFF1C);
     sound.channel_three_nr33 = (channel_three_nr33_t *) mmu_addr(0xFF1D);
     sound.channel_three_nr34 = (channel_three_nr34_t *) mmu_addr(0xFF1E);
+
+    sound.channel_four_nr41 = (channel_four_nr41_t *) mmu_addr(0xFF20);
+    sound.channel_four_nr42 = (channel_four_nr42_t *) mmu_addr(0xFF21);
+    sound.channel_four_nr44 = (channel_four_nr44_t *) mmu_addr(0xFF23);
+
+    sound.nr50 = mmu_addr(0xFF24);
+    sound.nr51 = mmu_addr(0xFF25);
+    sound.nr52 = mmu_addr(0xFF26);
 
     sound.wave_table = mmu_addr(0xFF30);
 
@@ -220,36 +228,79 @@ void static __always_inline sound_step(uint8_t t)
     /* enough cpu cycles to generate a single frame? */
     if (sound_sample_cycles_cnt >= sound_sample_cycles)
     {
-        int32_t sample = 0;
-        uint8_t channels = 0;
+        int32_t sample_left = 0;
+        int32_t sample_right = 0;
+        uint8_t channels_left = 0;
+        uint8_t channels_right = 0;
 
         /* time to generate a sample! sum all the fields */
         if (sound.channel_one.active && sound.channel_one.sample)
         {
-            sample += sound.channel_one.sample;
-            channels++;
+            /* to the right? */
+            if (sound.nr51->ch1_to_so1)
+            {
+                sample_right += sound.channel_one.sample;
+                channels_right++;
+            }
+
+            /* to the left? */
+            if (sound.nr51->ch1_to_so2)
+            {
+                sample_left += sound.channel_one.sample;
+                channels_left++;
+            }
         }
 
         if (sound.channel_two.active)
         {
-            sample += sound.channel_two.sample;
-            channels++;
+            /* to the right? */
+            if (sound.nr51->ch2_to_so1)
+            {
+                sample_right += sound.channel_two.sample;
+                channels_right++;
+            }
+
+            /* to the left? */
+            if (sound.nr51->ch2_to_so2)
+            {
+                sample_left += sound.channel_two.sample;
+                channels_left++;
+            }
         }
          
         if (sound.channel_three.active)
         {
-            sample += sound.channel_three.sample;
-            channels++;
+            /* to the right? */
+            if (sound.nr51->ch3_to_so1)
+            {
+                sample_right += sound.channel_three.sample;
+                channels_right++;
+            }
+
+            /* to the left? */
+            if (sound.nr51->ch3_to_so2)
+            {
+                sample_left += sound.channel_three.sample;
+                channels_left++;
+            }
         }
          
         /* at least one channel? */ 
-        if (channels)
+        if (channels_left)
         {
             /* push the average value of all channels samples */
-            sound_push_sample(sample / channels);
+            sound_push_sample(sample_left / channels_left);
         }
         else
             sound_push_sample(0); 
+
+        if (channels_right)
+        {
+            /* push the average value of all channels samples */
+            sound_push_sample(sample_right / channels_right);
+        }
+        else
+            sound_push_sample(0);
 
         sound_sample_cycles_cnt -= sound_sample_cycles;
     }
@@ -259,37 +310,46 @@ void static __always_inline sound_step(uint8_t t)
 void sound_length_ctrl_step()
 {
     /* treat channel one */ 
-    if (sound.channel_one.active && sound.channel_one_nr14->length_enable)
+    if (sound.channel_one_nr14->length_enable)
     {
-        sound.channel_one.length--;
+        //sound.channel_one.length--;
+        sound.channel_one_nr11->length_load++;
 
         /* if ZERO is reached, turn off the channel */
-        if (sound.channel_one.length == 0)
+        if (sound.channel_one_nr11->length_load == 0)
             sound.channel_one.active = 0;
     }
 
-    if (sound.channel_two.active && sound.channel_two_nr24->length_enable)
+    if (sound.channel_two_nr24->length_enable)
     {
-        sound.channel_two.length--;
+        sound.channel_two_nr21->length_load++;
 
-        /* if ZERO is reached, turn off the channel */
-        if (sound.channel_two.length == 0)
+        if (sound.channel_two_nr21->length_load == 0)
             sound.channel_two.active = 0;
     }
 
-    if (sound.channel_three.active && sound.channel_three_nr34->length_enable)
+    if (sound.channel_three_nr34->length_enable)
     {
-        sound.channel_three.length--;
+        sound.channel_three_nr31->length_load++;
 
-        /* if ZERO is reached, turn off the channel */
-        if (sound.channel_three.length == 0)
+        if (sound.channel_three_nr31->length_load == 0)
             sound.channel_three.active = 0;
+    }
+
+    if (sound.channel_four_nr44->length_enable)
+    {
+        sound.channel_four_nr41->length_load++;
+
+        if (sound.channel_four_nr41->length_load == 0)
+            sound.channel_four.active = 0;
     }
 
 }
 
 void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 {
+    /* requester snd_len is expressed in byte,           */
+    /* so divided by to to obtain wanted 16 bits samples */
     sound_read_samples(snd_len / 2, (int16_t *) stream);
 }
 
@@ -520,86 +580,172 @@ void sound_envelope_step()
 
 }
 
+uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v)
+{
+    switch (a)
+    {
+        /* NR1X */
+        case 0xFF10: return v | 0x80;
+        case 0xFF11: return v | 0x3F;
+        case 0xFF12: return v;
+        case 0xFF13: return v | 0xFF;
+        case 0xFF14: return v | 0xBF;
+        /* NR2X */
+        case 0xFF15: return v | 0xFF;
+        case 0xFF16: return v | 0x3F;
+        case 0xFF17: return v;
+        case 0xFF18: return v | 0xFF;
+        case 0xFF19: return v | 0xBF;
+        /* NR3X */
+        case 0xFF1A: return v | 0x7F;
+        case 0xFF1B: return v | 0xFF;
+        case 0xFF1C: return v | 0x9F;
+        case 0xFF1D: return v | 0xFF;
+        case 0xFF1E: return v | 0xBF;
+        /* NR4X */
+        case 0xFF1F: return v | 0xFF;
+        case 0xFF20: return v | 0xFF;
+        case 0xFF21: return v;
+        case 0xFF22: return v;
+        case 0xFF23: return v | 0xBF;
+        /* NR5X */
+        case 0xFF24: return v;
+        case 0xFF25: return v;
+        case 0xFF26: 
+            if (sound.nr52->power) 
+                return 0xf0                              | 
+                       sound.channel_one.active          | 
+                       (sound.channel_two.active << 1)   | 
+                       (sound.channel_three.active << 2) | 
+                       (sound.channel_four.active << 3);
+            else 
+                return 0x70;
+        case 0xFF27: 
+        case 0xFF28:
+        case 0xFF29: 
+        case 0xFF2A: 
+        case 0xFF2B: 
+        case 0xFF2C: 
+        case 0xFF2D: 
+        case 0xFF2E: 
+        case 0xFF2F: return 0xFF;
+
+        default: return v;
+    }
+}
+
 void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 {
     int i;
+
+    /* when turned off, only write to NR52 (0xFF26) is legit */
+    if (!sound.nr52->power && a != 0xFF26) 
+        return;
+
+    /* save old value */
+    uint8_t old = *((uint8_t *) mmu_addr(a));
+
+    /* confirm write on memory */
+    *((uint8_t *) mmu_addr(a)) = v;
 
     switch (a)
     {
         case 0xFF11:
 
+            //if (sound.channel_one.active)
             sound.channel_one.length = 64 - sound.channel_one_nr11->length_load;
+            //else
+            //    *((uint8_t *) sound.channel_one_nr11) = old;
+
+            break;
+
+        case 0xFF12:
+            
+            /* volume 0 = turn off the DAC = turn off channeru */
+            if (sound.channel_one_nr12->volume == 0 &&
+                sound.channel_one_nr12->add == 0)
+                sound.channel_one.active = 0;
 
             break;
 
         case 0xFF14:
-        if (v & 0x80)
-        {
-            uint16_t freq = sound.channel_one_nr13->frequency_lsb |
-                            (sound.channel_one_nr14->frequency_msb << 8);
-            uint8_t len = sound.channel_one_nr11->length_load;
 
-            /* setting internal modules data with stuff taken from memory */
-            sound.channel_one.active = 1;
-            sound.channel_one.frequency = freq;
-
-            /* qty of cpu ticks needed for a duty change (1/8 of wave cycle) */
-            sound.channel_one.duty_cycles = (2048 - freq) * 4;    
-
-            /* set the 8 phase of a duty cycle by setting 8 bits */
-            switch (sound.channel_one_nr11->duty)
+            if (v & 0x80) 
             {
-                           /* 12.5 % */
-                case 0x00: sound.channel_one.duty = 0x01;
-                           break;
+                uint16_t freq = sound.channel_one_nr13->frequency_lsb |
+                                (sound.channel_one_nr14->frequency_msb << 8);
+                uint8_t len = sound.channel_one_nr11->length_load;
 
-                           /* 25% */
-                case 0x01: sound.channel_one.duty = 0x81;
-                           break;
+                /* setting internal modules data with stuff taken from memory */
+                sound.channel_one.active = 1;
+                sound.channel_one.frequency = freq;
 
-                           /* 50% */
-                case 0x02: sound.channel_one.duty = 0x87;
-                           break;
+                /* qty of cpu ticks needed for a duty change */
+                /* (1/8 of wave cycle) */
+                sound.channel_one.duty_cycles = (2048 - freq) * 4;    
 
-                           /* 75% */
-                case 0x03: sound.channel_one.duty = 0x7E;
-                           break;
+                /* set the 8 phase of a duty cycle by setting 8 bits */
+                switch (sound.channel_one_nr11->duty)
+                {
+                               /* 12.5 % */
+                    case 0x00: sound.channel_one.duty = 0x01;
+                               break;
+
+                               /* 25% */
+                    case 0x01: sound.channel_one.duty = 0x81;
+                               break;
+
+                               /* 50% */
+                    case 0x02: sound.channel_one.duty = 0x87;
+                               break;
+
+                               /* 75% */
+                    case 0x03: sound.channel_one.duty = 0x7E;
+                               break;
+                }
+
+                /* start duty from the 1st bit */
+                sound.channel_one.duty_idx = 0;
+
+                /* calc length */
+                sound.channel_one.length = 64 - len;
+
+                /* base volume */
+                sound.channel_one.volume = 
+                    sound.channel_one_nr12->volume * 2048;
+
+                /* reset envelope counter */
+                sound.channel_one.envelope_cnt = 0;
+
+                /* save current freq into sweep shadow register */
+                sound.channel_one.sweep_shadow_frequency = freq;
+
+                /* reset sweep timer */
+                sound.channel_one.sweep_cnt = 0;
+
+                /* set sweep as active if period != 0 or shift != 0 */
+                if (sound.channel_one_nr10->sweep_period != 0 ||
+                    sound.channel_one_nr10->shift != 0)
+                    sound.channel_one.sweep_active = 1;
+                else
+                    sound.channel_one.sweep_active = 0;
+
+                /* if shift is != 0, calc the new frequency */
+                if (sound.channel_one_nr10->shift != 0)
+                {
+                    uint32_t new_freq = sound_sweep_calc();
+
+                    /* update all the stuff related to new frequency */
+                    sound_set_channel_one_frequency(new_freq);
+                }
+
+                /* if DAC is off, turn off the channel */
+                if (sound.channel_one_nr12->add == 0 &&
+                    sound.channel_one_nr12->volume == 0)
+                    sound.channel_one.active = 0;
             }
 
-            /* start duty from the 1st bit */
-            sound.channel_one.duty_idx = 0;
-
-            /* calc length */
-            sound.channel_one.length = 64 - len;
-
-            /* base volume */
-            sound.channel_one.volume = sound.channel_one_nr12->volume * 2048;
-
-            /* reset envelope counter */
-            sound.channel_one.envelope_cnt = 0;
-
-            /* save current freq into sweep shadow register */
-            sound.channel_one.sweep_shadow_frequency = freq;
-
-            /* reset sweep timer */
-            sound.channel_one.sweep_cnt = 0;
-
-            /* set sweep as active if period != 0 or shift != 0 */
-            if (sound.channel_one_nr10->sweep_period != 0 ||
-                sound.channel_one_nr10->shift != 0)
-                sound.channel_one.sweep_active = 1;
-            else
-                sound.channel_one.sweep_active = 0;
-
-            /* if shift is != 0, calc the new frequency */
-            if (sound.channel_one_nr10->shift != 0)
-            {
-                uint32_t new_freq = sound_sweep_calc();
-
-                /* update all the stuff related to new frequency */
-                sound_set_channel_one_frequency(new_freq);
-            }
-        }
+            break;
 
         case 0xFF16:
       
@@ -607,87 +753,190 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 
             break;
 
+        case 0xFF17:
+
+            /* volume 0 = turn off the DAC = turn off channeru */
+            if (sound.channel_two_nr22->volume == 0 &&
+                sound.channel_two_nr22->add == 0)
+                sound.channel_two.active = 0;
+
+            break;
+
         case 0xFF19:
-        if (v & 0x80)
-        {
-            uint16_t freq = sound.channel_two_nr23->frequency_lsb |
-                            (sound.channel_two_nr24->frequency_msb << 8);
-            uint8_t len = sound.channel_two_nr21->length_load;
 
-            /* setting internal modules data with stuff taken from memory */
-            sound.channel_two.active = 1;
-            sound.channel_two.frequency = freq;
-
-            /* qty of cpu ticks needed for a duty change (1/8 of wave cycle) */
-            sound.channel_two.duty_cycles = (2048 - freq) * 4;
-
-            /* set the 8 phase of a duty cycle by setting 8 bits */
-            switch (sound.channel_two_nr21->duty)
+            if (v & 0x80) 
             {
-                           /* 12.5 % */
-                case 0x00: sound.channel_two.duty = 0x01;
-                           break;
+                uint16_t freq = sound.channel_two_nr23->frequency_lsb |
+                                (sound.channel_two_nr24->frequency_msb << 8);
+                uint8_t len = sound.channel_two_nr21->length_load;
 
-                           /* 25% */
-                case 0x01: sound.channel_two.duty = 0x81;
-                           break;
+                /* setting internal modules data with stuff taken from memory */
+                sound.channel_two.active = 1;
+                sound.channel_two.frequency = freq;
 
-                           /* 50% */
-                case 0x02: sound.channel_two.duty = 0x87;
-                           break;
+                /* qty of cpu ticks needed for a duty change */ 
+                /* (1/8 of wave cycle) */
+                sound.channel_two.duty_cycles = (2048 - freq) * 4;
 
-                           /* 75% */
-                case 0x03: sound.channel_two.duty = 0x7E;
-                           break;
+                /* set the 8 phase of a duty cycle by setting 8 bits */
+                switch (sound.channel_two_nr21->duty)
+                {
+                               /* 12.5 % */
+                    case 0x00: sound.channel_two.duty = 0x01;
+                               break;
+
+                               /* 25% */
+                    case 0x01: sound.channel_two.duty = 0x81;
+                               break;
+
+                               /* 50% */
+                    case 0x02: sound.channel_two.duty = 0x87;
+                               break;
+
+                               /* 75% */
+                    case 0x03: sound.channel_two.duty = 0x7E;
+                               break;
+                }
+
+                /* start duty from the 8th bit */
+                sound.channel_two.duty_idx = 0;
+ 
+                /* calc length */
+                sound.channel_two.length = 64 - len;
+
+                /* base volume */
+                sound.channel_two.volume = 
+                    sound.channel_two_nr22->volume * 2048;
+
+                /* reset envelope counter */
+                sound.channel_two.envelope_cnt = 0;
+
+                /* if DAC is off, turn off the channel */
+                if (sound.channel_two_nr22->add == 0 &&
+                    sound.channel_two_nr22->volume == 0)
+                    sound.channel_two.active = 0;
+
             }
+            break;
 
-            /* start duty from the 8th bit */
-            sound.channel_two.duty_idx = 0;
+        case 0xFF1A:
 
-            /* calc length */
-            sound.channel_two.length = 64 - len;
+            /* if DAC is off, disable the channel */
+            if (sound.channel_three_nr30->dac == 0)
+                sound.channel_three.active = 0;
 
-            /* base volume */
-            sound.channel_two.volume = sound.channel_two_nr22->volume * 2048;
+            break;
 
-            /* reset envelope counter */
-            sound.channel_two.envelope_cnt = 0;
-        }
+        case 0xFF1B:
+      
+            sound.channel_three.length = 
+                256 - sound.channel_three_nr31->length_load;
+
+            break;
 
         case 0xFF1E:
-        if (v & 0x80)
-        {
-            uint16_t freq = sound.channel_three_nr33->frequency_lsb |
-                            (sound.channel_three_nr34->frequency_msb << 8);
-            uint8_t len = sound.channel_three_nr31->length_load;
 
-            /* setting internal modules data with stuff taken from memory */
-            sound.channel_three.active = 1;
-            sound.channel_three.frequency = freq;
-
-            /* qty of cpu ticks needed for a wave sample change */
-            sound.channel_three.cycles = (2048 - freq) * 2;
-
-            /* init wave table index */
-            sound.channel_three.index = 0;
-
-            /* calc length */
-            sound.channel_three.length = 256 - len;
-
-            /* fill wave buffer */
-            for (i=0; i<16; i++)
+            if (v & 0x80) 
             {
-                sound.channel_three.wave[i*2] = ((sound.wave_table[i] & 0xf0) >> 4) * (32275 / 15);
-                sound.channel_three.wave[(i*2) + 1] = (sound.wave_table[i] & 0x0f) * (32275 / 15);
+                uint16_t freq = sound.channel_three_nr33->frequency_lsb |
+                                (sound.channel_three_nr34->frequency_msb << 8);
+                uint8_t len = sound.channel_three_nr31->length_load;
+
+                /* setting internal modules data with stuff taken from memory */
+                sound.channel_three.active = 1;
+                sound.channel_three.frequency = freq;
+
+                /* qty of cpu ticks needed for a wave sample change */
+                sound.channel_three.cycles = (2048 - freq) * 2;
+
+                /* init wave table index */
+                sound.channel_three.index = 0;
+
+                /* calc length */
+                sound.channel_three.length = 256 - len;
+
+                /* fill wave buffer */
+                for (i=0; i<16; i++)
+                {
+                    sound.channel_three.wave[i*2] = 
+                        ((sound.wave_table[i] & 0xf0) >> 4) * (32275 / 15);
+                    sound.channel_three.wave[(i*2) + 1] = 
+                        (sound.wave_table[i] & 0x0f) * (32275 / 15);
+                }
+
+                /* update with desired audio volume */
+                for (i=0; i<32; i++)
+                {
+                    sound.channel_three.wave[i] >>= 
+                        (sound.channel_three_nr32->volume_code == 0 
+                             ? 4 : sound.channel_three_nr32->volume_code - 1);
+                }
+
+                /* if DAC is off, disable the channel */
+                if (sound.channel_three_nr30->dac == 0)
+                    sound.channel_three.active = 0;
+            }
+            break;
+
+        case 0xFF21:
+
+            /* volume 0 = turn off the DAC = turn off channeru */
+            if (sound.channel_four_nr42->volume == 0 &&
+                sound.channel_four_nr42->add == 0)
+                sound.channel_four.active = 0;
+
+            break;
+
+        case 0xFF23:
+
+            if (v & 0x80) 
+            {
+                uint8_t len = sound.channel_four_nr41->length_load;
+
+                /* setting internal modules data with stuff taken from memory */
+                sound.channel_four.active = 1;
+
+                /* calc length */
+                sound.channel_four.length = 64 - len;
+
+                /* if DAC is off, turn off the channel */
+                if (sound.channel_four_nr42->add == 0 &&
+                    sound.channel_four_nr42->volume == 0)
+                    sound.channel_four.active = 0;
             }
 
-            /* update with desired audio volume */
-            for (i=0; i<32; i++)
+            break;
+
+        case 0xFF26:
+
+            if (v & 0x80)
             {
-                sound.channel_three.wave[i] >>= (sound.channel_three_nr32->volume_code == 0 
-                                                 ? 4 : sound.channel_three_nr32->volume_code - 1);
+                // TODO
+            } 
+            else
+            {
+                /* length counters are unaffected */
+                uint8_t ch1 = sound.channel_one_nr11->length_load;
+                uint8_t ch2 = sound.channel_two_nr21->length_load;
+                uint8_t ch3 = sound.channel_three_nr31->length_load;
+                uint8_t ch4 = sound.channel_four_nr41->length_load;
+
+                /* clear all the sound memory */
+                bzero(mmu_addr(0xFF10), 22);
+
+                /* restore length */
+                sound.channel_one_nr11->length_load = ch1;
+                sound.channel_two_nr21->length_load = ch2;
+                sound.channel_three_nr31->length_load = ch3;
+                sound.channel_four_nr41->length_load = ch4;
+
+                /* turn off every channeru */
+                sound.channel_one.active = 0;
+                sound.channel_two.active = 0;
+                sound.channel_three.active = 0;
+                sound.channel_four.active = 0;
             }
-        }
+            
     }
 }
 

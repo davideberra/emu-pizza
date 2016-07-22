@@ -20,8 +20,8 @@
 #ifndef __GLOBALS__
 #define __GLOBALS__
 
-static char quit = 0;
-static char gpu_window = 1;
+static char global_quit = 0;
+static char global_window = 1;
 static char global_debug = 0;
 static char global_benchmark = 0;
 
