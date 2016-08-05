@@ -24,6 +24,7 @@
 #include <pthread.h>
 #include <SDL2/SDL.h>
 #include <semaphore.h>
+#include <sys/time.h>
 #include "subsystem/gameboy/cycles_hdr.h"
 #include "subsystem/gameboy/globals.h"
 #include "subsystem/gameboy/gpu_hdr.h"
@@ -35,9 +36,9 @@ SDL_AudioSpec desired;
 SDL_AudioSpec obtained;
 
 /* */
-#define SOUND_SAMPLES 1024
-#define SOUND_BUF_SZ  65536
+#define SOUND_SAMPLES 2048
 #define SOUND_FREQ    48000
+#define SOUND_BUF_SZ  (SOUND_FREQ * 2)
 
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
@@ -65,6 +66,7 @@ void   sound_push_sample(int16_t s);
 void   sound_read_samples(int len, int16_t *buf);
 void   sound_sweep_step();
 void   sound_term();
+void static inline sound_write_wave(uint16_t a, uint8_t v);
 
 
 /* init sound states */
@@ -83,32 +85,32 @@ void static sound_init()
         SDL_PauseAudio(0);
     else
     {
-        printf("Cannot open audio device\n");
+        printf("Cannot open audio device!!\n");
         global_quit = 1;
         return;
-    }
+    } 
 
     /* point sound structures to their memory areas */
-    sound.channel_one_nr10 = (channel_one_nr10_t *) mmu_addr(0xFF10);
-    sound.channel_one_nr11 = (channel_one_nr11_t *) mmu_addr(0xFF11);
-    sound.channel_one_nr12 = (channel_one_nr12_t *) mmu_addr(0xFF12);
-    sound.channel_one_nr13 = (channel_one_nr13_t *) mmu_addr(0xFF13);
-    sound.channel_one_nr14 = (channel_one_nr14_t *) mmu_addr(0xFF14);
+    sound.nr10 = (nr10_t *) mmu_addr(0xFF10);
+    sound.nr11 = (nr11_t *) mmu_addr(0xFF11);
+    sound.nr12 = (nr12_t *) mmu_addr(0xFF12);
+    sound.nr13 = (nr13_t *) mmu_addr(0xFF13);
+    sound.nr14 = (nr14_t *) mmu_addr(0xFF14);
 
-    sound.channel_two_nr21 = (channel_two_nr21_t *) mmu_addr(0xFF16);
-    sound.channel_two_nr22 = (channel_two_nr22_t *) mmu_addr(0xFF17);
-    sound.channel_two_nr23 = (channel_two_nr23_t *) mmu_addr(0xFF18);
-    sound.channel_two_nr24 = (channel_two_nr24_t *) mmu_addr(0xFF19);
+    sound.nr21 = (nr21_t *) mmu_addr(0xFF16);
+    sound.nr22 = (nr22_t *) mmu_addr(0xFF17);
+    sound.nr23 = (nr23_t *) mmu_addr(0xFF18);
+    sound.nr24 = (nr24_t *) mmu_addr(0xFF19);
 
-    sound.channel_three_nr30 = (channel_three_nr30_t *) mmu_addr(0xFF1A);
-    sound.channel_three_nr31 = (channel_three_nr31_t *) mmu_addr(0xFF1B);
-    sound.channel_three_nr32 = (channel_three_nr32_t *) mmu_addr(0xFF1C);
-    sound.channel_three_nr33 = (channel_three_nr33_t *) mmu_addr(0xFF1D);
-    sound.channel_three_nr34 = (channel_three_nr34_t *) mmu_addr(0xFF1E);
+    sound.nr30 = (nr30_t *) mmu_addr(0xFF1A);
+    sound.nr31 = (nr31_t *) mmu_addr(0xFF1B);
+    sound.nr32 = (nr32_t *) mmu_addr(0xFF1C);
+    sound.nr33 = (nr33_t *) mmu_addr(0xFF1D);
+    sound.nr34 = (nr34_t *) mmu_addr(0xFF1E);
 
-    sound.channel_four_nr41 = (channel_four_nr41_t *) mmu_addr(0xFF20);
-    sound.channel_four_nr42 = (channel_four_nr42_t *) mmu_addr(0xFF21);
-    sound.channel_four_nr44 = (channel_four_nr44_t *) mmu_addr(0xFF23);
+    sound.nr41 = (nr41_t *) mmu_addr(0xFF20);
+    sound.nr42 = (nr42_t *) mmu_addr(0xFF21);
+    sound.nr44 = (nr44_t *) mmu_addr(0xFF23);
 
     sound.nr50 = mmu_addr(0xFF24);
     sound.nr51 = mmu_addr(0xFF25);
@@ -136,10 +138,17 @@ void static __always_inline sound_step(uint8_t t)
     sound_fs_cycles_cnt += t;
     sound_sample_cycles_cnt += (double) t;
  
+    if (sound.channel_three.ram_access > 0)
+        sound.channel_three.ram_access -= 4;
+
     /* frame sequencer runs at 512 hz - 8192 ticks at standard CPU speed */
     if (sound_fs_cycles_cnt == sound_fs_cycles)
     {
+        /* rotate from 0 to 7 */
         sound.fs_cycles = (sound.fs_cycles + 1) % 8;
+
+        /* reset fs cycles counter */
+        sound_fs_cycles_cnt = 0; // sound_fs_cycles;
 
         /* length controller works at 256hz */
         if (sound.fs_cycles % 2 == 0)
@@ -153,7 +162,7 @@ void static __always_inline sound_step(uint8_t t)
         if (sound.fs_cycles == 7)
             sound_envelope_step();
  
-        sound_fs_cycles_cnt -= sound_fs_cycles;
+//        sound_fs_cycles_cnt -= sound_fs_cycles;
     }
 
     /* update all channels */
@@ -197,7 +206,8 @@ void static __always_inline sound_step(uint8_t t)
                 sound.channel_two.sample = -sound.channel_two.volume;
 
             /* step to the next duty value */
-            sound.channel_two.duty_idx = (sound.channel_two.duty_idx + 1) % 8;
+            sound.channel_two.duty_idx = 
+                (sound.channel_two.duty_idx + 1) & 0x07;
 
             /* go back */
             sound.channel_two.duty_cycles_cnt -= sound.channel_two.duty_cycles;
@@ -214,7 +224,7 @@ void static __always_inline sound_step(uint8_t t)
             sound.channel_three.cycles)
         {
             /* switch to the next wave sample */
-            sound.channel_three.index = (sound.channel_three.index + 1) % 32;
+            sound.channel_three.index = (sound.channel_three.index + 1) & 0x1F;
 
             /* set the new current sample */
             sound.channel_three.sample = 
@@ -222,7 +232,16 @@ void static __always_inline sound_step(uint8_t t)
 
             /* go back */
             sound.channel_three.cycles_cnt -= sound.channel_three.cycles;
-        } 
+
+            /* reload new period */
+            uint16_t freq = sound.nr33->frequency_lsb |
+                            (sound.nr34->frequency_msb << 8);
+
+            sound.channel_three.frequency = freq; 
+
+            /* qty of cpu ticks needed for a wave sample change */
+            sound.channel_three.cycles = (2048 - freq) * 2; 
+        }
     }
 
     /* enough cpu cycles to generate a single frame? */
@@ -306,43 +325,49 @@ void static __always_inline sound_step(uint8_t t)
     }
 }
 
+/* update length of channel1 */
+void static inline sound_length_ctrl_step_ch(char length_enable, 
+                                             uint32_t *length,
+                                             uint8_t *active)
+{
+    if (length_enable && *length != 0)
+    {
+        (*length)--;
+
+        /* if ZERO is reached, turn off the channel */
+        if (*length == 0)
+            *active = 0;
+    }
+}
+
 /* length controller step */
 void sound_length_ctrl_step()
 {
-    /* treat channel one */ 
-    if (sound.channel_one_nr14->length_enable)
+    /* step every channel */
+    sound_length_ctrl_step_ch(sound.nr14->length_enable, 
+                              &sound.channel_one.length, 
+                              &sound.channel_one.active);
+
+    sound_length_ctrl_step_ch(sound.nr24->length_enable,
+                              &sound.channel_two.length,
+                              &sound.channel_two.active);
+
+    sound_length_ctrl_step_ch(sound.nr34->length_enable,
+                              &sound.channel_three.length,
+                              &sound.channel_three.active);
+
+    sound_length_ctrl_step_ch(sound.nr44->length_enable,
+                              &sound.channel_four.length,
+                              &sound.channel_four.active);
+
+/*
+    if (sound.nr44->length_enable)
     {
-        //sound.channel_one.length--;
-        sound.channel_one_nr11->length_load++;
+        sound.nr41->length_load++;
 
-        /* if ZERO is reached, turn off the channel */
-        if (sound.channel_one_nr11->length_load == 0)
-            sound.channel_one.active = 0;
-    }
-
-    if (sound.channel_two_nr24->length_enable)
-    {
-        sound.channel_two_nr21->length_load++;
-
-        if (sound.channel_two_nr21->length_load == 0)
-            sound.channel_two.active = 0;
-    }
-
-    if (sound.channel_three_nr34->length_enable)
-    {
-        sound.channel_three_nr31->length_load++;
-
-        if (sound.channel_three_nr31->length_load == 0)
-            sound.channel_three.active = 0;
-    }
-
-    if (sound.channel_four_nr44->length_enable)
-    {
-        sound.channel_four_nr41->length_load++;
-
-        if (sound.channel_four_nr41->length_load == 0)
+        if (sound.nr41->length_load == 0)
             sound.channel_four.active = 0;
-    }
+    } */
 
 }
 
@@ -356,6 +381,9 @@ void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
+
+    sound_push++;
+
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
    
@@ -377,7 +405,7 @@ void sound_push_sample(int16_t s)
     }
 
     /* wait for the audio to be played */
-    if (sound_buf_available == 18000)
+    if (sound_buf_available == SOUND_BUF_SZ)
     {
         sound_buffer_full = 1;
 
@@ -401,6 +429,8 @@ size_t sound_available_samples()
 /* read a block of data from circular buffer */
 void sound_read_samples(int len, int16_t *buf)
 {
+    sound_req += len;
+
     int to_read = len;
 
     if (global_benchmark)
@@ -443,6 +473,9 @@ void sound_read_samples(int len, int16_t *buf)
         sound_buf_rd += to_read;
     }    
 
+    /* update avaiable samples */
+    sound_buf_available -= to_read;
+
     if (sound_buffer_full)
     {
         /* unlock write thread */
@@ -451,9 +484,6 @@ void sound_read_samples(int len, int16_t *buf)
         /* send a signal */
         pthread_cond_signal(&sound_cond);
     }
-
-    /* update avaiable samples */
-    sound_buf_available -= to_read;
 
     /* unlock the buffer */
     pthread_mutex_unlock(&sound_mutex);
@@ -467,11 +497,14 @@ uint32_t sound_sweep_calc()
     /* time to update frequency */
     uint32_t diff = 
              sound.channel_one.sweep_shadow_frequency >> 
-             sound.channel_one_nr10->shift;
+             sound.nr10->shift;
 
     /* the calculated diff must be summed or subtracted to frequency */
-    if (sound.channel_one_nr10->negate)
+    if (sound.nr10->negate)
+    {
         new_freq = sound.channel_one.sweep_shadow_frequency - diff;
+        sound.channel_one.sweep_neg = 1;
+    }
     else
         new_freq = sound.channel_one.sweep_shadow_frequency + diff;
 
@@ -479,21 +512,25 @@ uint32_t sound_sweep_calc()
     if (new_freq > 2047)
         sound.channel_one.active = 0;
 
-    /* copy new_freq into shadow register */
-    sound.channel_one.sweep_shadow_frequency = new_freq;
-
     return new_freq;
 }
 
 /* set channel one new frequency */
-void sound_set_channel_one_frequency(uint32_t new_freq)
+void sound_set_frequency(uint32_t new_freq)
 {
+    /* too high? */
+    if (new_freq > 2047)
+    {
+        sound.channel_one.active = 0;
+        return;
+    }
+
     /* update with the new frequency */
     sound.channel_one.frequency = new_freq;
 
     /* update them also into memory */
-    sound.channel_one_nr13->frequency_lsb = (uint8_t) (new_freq & 0xff);
-    sound.channel_one_nr14->frequency_msb = (uint8_t) ((new_freq >> 8) & 0x07);
+    sound.nr13->frequency_lsb = (uint8_t) (new_freq & 0xff);
+    sound.nr14->frequency_msb = (uint8_t) ((new_freq >> 8) & 0x07);
 
     /* update the duty cycles */
     sound.channel_one.duty_cycles = (2048 - new_freq) * 4;
@@ -507,22 +544,43 @@ void sound_sweep_step()
 {
     uint16_t new_freq;
 
-    if (sound.channel_one.active && sound.channel_one.sweep_active)
+    if (sound.channel_one.active && 
+        sound.channel_one.sweep_active)
     {
+        /* make it rotate from 0 to 8 */
         sound.channel_one.sweep_cnt++;
 
-        if (sound.channel_one.sweep_cnt > sound.channel_one_nr10->sweep_period)
+        /* enough cycles? */
+        if (sound.channel_one.sweep_cnt == sound.channel_one.sweep_next)
         {
-            new_freq = sound_sweep_calc();
+            /* reload the next step - 0 is treated as 8 */
+            sound.channel_one.sweep_next = 
+            sound.nr10->sweep_period ? 
+                sound.nr10->sweep_period : 8;
 
-            /* update all the stuff related to new frequency */
-            sound_set_channel_one_frequency(new_freq);
-
-            /* update freq again (but only in shadow register) */
-            sound_sweep_calc();
- 
             /* reset sweep counter */
             sound.channel_one.sweep_cnt = 0;
+
+            /* period must be > 0 if new freq gotta be updated */
+            if (sound.nr10->sweep_period == 0)
+                return;
+
+            /* calc new frequency */
+            new_freq = sound_sweep_calc();
+
+            /* set it only if < 2048 and shift != 0 */
+            if (sound.nr10->shift &&
+                new_freq < 2048)
+            {
+                /* copy new_freq into shadow register */
+                sound.channel_one.sweep_shadow_frequency = new_freq;
+
+                /* update all the stuff related to new frequency */
+                sound_set_frequency(new_freq);
+
+                /* update freq again (but only in shadow register) */
+                sound_sweep_calc();
+            }
         }
     }  
 }
@@ -536,9 +594,9 @@ void sound_envelope_step()
         sound.channel_one.envelope_cnt++;
 
         /* if counter reaches period, update volume */
-        if (sound.channel_one.envelope_cnt == sound.channel_one_nr12->period)
+        if (sound.channel_one.envelope_cnt == sound.nr12->period)
         {
-            if (sound.channel_one_nr12->add)
+            if (sound.nr12->add)
             {
                 if (sound.channel_one.volume < (15 * 2048))
                     sound.channel_one.volume += 2048;
@@ -560,9 +618,9 @@ void sound_envelope_step()
         sound.channel_two.envelope_cnt++;
 
         /* if counter reaches period, update volume */
-        if (sound.channel_two.envelope_cnt == sound.channel_two_nr22->period)
+        if (sound.channel_two.envelope_cnt == sound.nr22->period)
         {
-            if (sound.channel_two_nr22->add)
+            if (sound.nr22->add)
             {
                 if (sound.channel_two.volume < (15 * 2048))
                     sound.channel_two.volume += 2048;
@@ -629,6 +687,29 @@ uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v)
         case 0xFF2D: 
         case 0xFF2E: 
         case 0xFF2F: return 0xFF;
+        case 0xFF30: 
+        case 0xFF31: 
+        case 0xFF32: 
+        case 0xFF33: 
+        case 0xFF34: 
+        case 0xFF35: 
+        case 0xFF36: 
+        case 0xFF37: 
+        case 0xFF38: 
+        case 0xFF39: 
+        case 0xFF3A: 
+        case 0xFF3B: 
+        case 0xFF3C: 
+        case 0xFF3D: 
+        case 0xFF3E: 
+        case 0xFF3F: 
+            if (sound.channel_three.active)
+            {
+                if (sound.channel_three.ram_access != 0)
+                    return 0xFF;
+
+                return sound.wave_table[sound.channel_three.index >> 1];
+            }
 
         default: return v;
     }
@@ -637,10 +718,25 @@ uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v)
 void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 {
     int i;
+    uint16_t uword;
 
     /* when turned off, only write to NR52 (0xFF26) is legit */
-    if (!sound.nr52->power && a != 0xFF26) 
-        return;
+    if (!sound.nr52->power && a != 0xFF26)
+    {
+        /* in DMG mode, update length is legit while no power */ 
+        switch (a)
+        {
+        case 0xFF11: sound.channel_one.length = 64 - (v & 0x3f); return;
+        case 0xFF16: sound.channel_two.length = 64 - (v & 0x3f); return;
+        case 0xFF1B: sound.channel_three.length = 256 - v; return;
+        case 0xFF20: sound.channel_four.length = 64 - (v & 0x3f); return;
+        default: return;
+        }
+    }
+
+    /* wave write */
+    if (a >= 0xFF30 && a <= 0xFF3F)
+        return sound_write_wave(a, v);
 
     /* save old value */
     uint8_t old = *((uint8_t *) mmu_addr(a));
@@ -650,31 +746,53 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
 
     switch (a)
     {
+        case 0xFF10:
+
+            if (!sound.nr10->negate && sound.channel_one.sweep_neg)
+                sound.channel_one.active = 0; 
+
+            break;
+
         case 0xFF11:
 
-            //if (sound.channel_one.active)
-            sound.channel_one.length = 64 - sound.channel_one_nr11->length_load;
-            //else
-            //    *((uint8_t *) sound.channel_one_nr11) = old;
+            /* set length as 64 - length_load */
+            sound.channel_one.length = 64 - sound.nr11->length_load;
 
             break;
 
         case 0xFF12:
             
             /* volume 0 = turn off the DAC = turn off channeru */
-            if (sound.channel_one_nr12->volume == 0 &&
-                sound.channel_one_nr12->add == 0)
+            if (sound.nr12->volume == 0 &&
+                sound.nr12->add == 0)
                 sound.channel_one.active = 0;
 
             break;
 
         case 0xFF14:
 
+            /* length counter turned on */
+            if (sound.nr14->length_enable)
+            {
+                nr14_t *old_nr14 = (nr14_t *) &old;
+
+                /* give an extra length clock if                 */
+                /* 1) we switched from off to on the len counter */
+                /* 2) we are in the first half of len clock      */
+                /* 3) actual length is not zero                  */
+                if ((old_nr14->length_enable == 0) &&
+                    ((sound.fs_cycles & 0x01) == 0x00) &&
+                    (sound.channel_one.length != 0))
+                    sound_length_ctrl_step_ch(sound.nr14->length_enable,
+                               &sound.channel_one.length,
+                               &sound.channel_one.active);
+            }
+
             if (v & 0x80) 
             {
-                uint16_t freq = sound.channel_one_nr13->frequency_lsb |
-                                (sound.channel_one_nr14->frequency_msb << 8);
-                uint8_t len = sound.channel_one_nr11->length_load;
+                uint16_t freq = sound.nr13->frequency_lsb |
+                                (sound.nr14->frequency_msb << 8);
+//                uint8_t len = sound.nr11->length_load;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_one.active = 1;
@@ -685,7 +803,7 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_one.duty_cycles = (2048 - freq) * 4;    
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
-                switch (sound.channel_one_nr11->duty)
+                switch (sound.nr11->duty)
                 {
                                /* 12.5 % */
                     case 0x00: sound.channel_one.duty = 0x01;
@@ -708,11 +826,12 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_one.duty_idx = 0;
 
                 /* calc length */
-                sound.channel_one.length = 64 - len;
+                if (sound.channel_one.length == 0)
+                    sound.channel_one.length = 64;
 
                 /* base volume */
                 sound.channel_one.volume = 
-                    sound.channel_one_nr12->volume * 2048;
+                    sound.nr12->volume * 2048;
 
                 /* reset envelope counter */
                 sound.channel_one.envelope_cnt = 0;
@@ -723,52 +842,84 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 /* reset sweep timer */
                 sound.channel_one.sweep_cnt = 0;
 
+                /* reset sweep neg bool  */
+                sound.channel_one.sweep_neg = 0;
+
+                /* reload the next step */
+                sound.channel_one.sweep_next = sound.nr10->sweep_period ? 
+                                               sound.nr10->sweep_period : 8;
+
                 /* set sweep as active if period != 0 or shift != 0 */
-                if (sound.channel_one_nr10->sweep_period != 0 ||
-                    sound.channel_one_nr10->shift != 0)
+                if (sound.nr10->sweep_period != 0 ||
+                    sound.nr10->shift != 0)
                     sound.channel_one.sweep_active = 1;
                 else
                     sound.channel_one.sweep_active = 0;
 
                 /* if shift is != 0, calc the new frequency */
-                if (sound.channel_one_nr10->shift != 0)
+                if (sound.nr10->shift != 0)
                 {
                     uint32_t new_freq = sound_sweep_calc();
 
                     /* update all the stuff related to new frequency */
-                    sound_set_channel_one_frequency(new_freq);
+                    sound_set_frequency(new_freq);
                 }
 
                 /* if DAC is off, turn off the channel */
-                if (sound.channel_one_nr12->add == 0 &&
-                    sound.channel_one_nr12->volume == 0)
+                if (sound.nr12->add == 0 &&
+                    sound.nr12->volume == 0)
                     sound.channel_one.active = 0;
+
+                /* extra length clock if length == 64 and FS is in the fist half */
+                if ((sound.fs_cycles & 0x01) == 0x00 &&
+                     sound.channel_one.length == 64)
+                    sound_length_ctrl_step_ch(sound.nr14->length_enable,
+                               &sound.channel_one.length,
+                               &sound.channel_one.active);
             }
+
 
             break;
 
         case 0xFF16:
       
-            sound.channel_two.length = 64 - sound.channel_two_nr21->length_load;
+            sound.channel_two.length = 64 - sound.nr21->length_load;
 
             break;
 
         case 0xFF17:
 
             /* volume 0 = turn off the DAC = turn off channeru */
-            if (sound.channel_two_nr22->volume == 0 &&
-                sound.channel_two_nr22->add == 0)
+            if (sound.nr22->volume == 0 &&
+                sound.nr22->add == 0)
                 sound.channel_two.active = 0;
 
             break;
 
         case 0xFF19:
 
+            /* length counter turned on */
+            if (sound.nr24->length_enable)
+            {
+                nr24_t *old_nr24 = (nr24_t *) &old;
+
+                /* give an extra length clock if                 */
+                /* 1) we switched from off to on the len counter */
+                /* 2) we are in the first half of len clock      */
+                /* 3) actual length is not zero                  */
+                if ((old_nr24->length_enable == 0) &&
+                    ((sound.fs_cycles & 0x01) == 0x00) &&
+                    (sound.channel_two.length != 0))
+                    sound_length_ctrl_step_ch(sound.nr24->length_enable,
+                               &sound.channel_two.length,
+                               &sound.channel_two.active);
+            }
+
             if (v & 0x80) 
             {
-                uint16_t freq = sound.channel_two_nr23->frequency_lsb |
-                                (sound.channel_two_nr24->frequency_msb << 8);
-                uint8_t len = sound.channel_two_nr21->length_load;
+                uint16_t freq = sound.nr23->frequency_lsb |
+                                (sound.nr24->frequency_msb << 8);
+                uint8_t len = sound.nr21->length_load;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_two.active = 1;
@@ -779,7 +930,7 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_two.duty_cycles = (2048 - freq) * 4;
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
-                switch (sound.channel_two_nr21->duty)
+                switch (sound.nr21->duty)
                 {
                                /* 12.5 % */
                     case 0x00: sound.channel_two.duty = 0x01;
@@ -802,27 +953,35 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_two.duty_idx = 0;
  
                 /* calc length */
-                sound.channel_two.length = 64 - len;
+                if (sound.channel_two.length == 0)
+                    sound.channel_two.length = 64;
 
                 /* base volume */
                 sound.channel_two.volume = 
-                    sound.channel_two_nr22->volume * 2048;
+                    sound.nr22->volume * 2048;
 
                 /* reset envelope counter */
                 sound.channel_two.envelope_cnt = 0;
 
                 /* if DAC is off, turn off the channel */
-                if (sound.channel_two_nr22->add == 0 &&
-                    sound.channel_two_nr22->volume == 0)
+                if (sound.nr22->add == 0 &&
+                    sound.nr22->volume == 0)
                     sound.channel_two.active = 0;
 
+                /* extra length clock if length == 64 */
+                /* and FS is in the fist half         */
+                if ((sound.fs_cycles & 0x01) == 0x00 &&
+                     sound.channel_two.length == 64)
+                    sound_length_ctrl_step_ch(sound.nr24->length_enable,
+                               &sound.channel_two.length,
+                               &sound.channel_two.active);
             }
             break;
 
         case 0xFF1A:
 
             /* if DAC is off, disable the channel */
-            if (sound.channel_three_nr30->dac == 0)
+            if (sound.nr30->dac == 0)
                 sound.channel_three.active = 0;
 
             break;
@@ -830,30 +989,85 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
         case 0xFF1B:
       
             sound.channel_three.length = 
-                256 - sound.channel_three_nr31->length_load;
+                256 - sound.nr31->length_load;
+
+            break;
+
+        case 0xFF1C:
+
+                /* fill wave buffer */
+                for (i=0; i<16; i++)
+                {
+                    sound.channel_three.wave[i*2] =
+                        ((sound.wave_table[i] & 0xf0) >> 4) * (32275 / 15);
+                    sound.channel_three.wave[(i*2) + 1] =
+                        (sound.wave_table[i] & 0x0f) * (32275 / 15);
+                }
+
+                /* update with desired audio volume */
+                for (i=0; i<32; i++)
+                {
+                    sound.channel_three.wave[i] >>=
+                        (sound.nr32->volume_code == 0
+                             ? 4 : sound.nr32->volume_code - 1);
+                }
 
             break;
 
         case 0xFF1E:
 
+            /* length counter turned on */
+            if (sound.nr34->length_enable)
+            {
+                nr34_t *old_nr34 = (nr34_t *) &old;
+
+                /* give an extra length clock if                 */
+                /* 1) we switched from off to on the len counter */
+                /* 2) we are in the first half of len clock      */
+                /* 3) actual length is not zero                  */
+                if ((old_nr34->length_enable == 0) &&
+                    ((sound.fs_cycles & 0x01) == 0x00) &&
+                    (sound.channel_three.length != 0))
+                    sound_length_ctrl_step_ch(sound.nr34->length_enable,
+                               &sound.channel_three.length,
+                               &sound.channel_three.active);
+            }
+
             if (v & 0x80) 
             {
-                uint16_t freq = sound.channel_three_nr33->frequency_lsb |
-                                (sound.channel_three_nr34->frequency_msb << 8);
-                uint8_t len = sound.channel_three_nr31->length_load;
+                uint16_t freq = sound.nr33->frequency_lsb |
+                                (sound.nr34->frequency_msb << 8);
+                uint8_t len = sound.nr31->length_load;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_three.active = 1;
                 sound.channel_three.frequency = freq;
 
                 /* qty of cpu ticks needed for a wave sample change */
-                sound.channel_three.cycles = (2048 - freq) * 2;
+                sound.channel_three.cycles = ((2048 - freq) * 2) + 6; // * 2;
 
                 /* init wave table index */
+                if (sound.channel_three.cycles ==
+                    sound.channel_three.cycles_cnt + 8)
+                {
+                    uint8_t next = ((sound.channel_three.index + 1) & 0x1F) >> 1;
+
+                    if (next < 4)
+                        sound.wave_table[0] = sound.wave_table[next];
+                    else
+                        memcpy(sound.wave_table, &sound.wave_table[next & 0xfc], 4);
+                }
+
+                /* qty of cpu ticks needed for a wave sample change */
+                // sound.channel_three.cycles = (2048 - freq) * 2; // * 2;
+
+                //if (old & 0x80 == 0x00)
                 sound.channel_three.index = 0;
+                sound.channel_three.cycles_cnt = 0;
 
                 /* calc length */
-                sound.channel_three.length = 256 - len;
+                if (sound.channel_three.length == 0)
+                    sound.channel_three.length = 256;
 
                 /* fill wave buffer */
                 for (i=0; i<16; i++)
@@ -868,67 +1082,122 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
                 for (i=0; i<32; i++)
                 {
                     sound.channel_three.wave[i] >>= 
-                        (sound.channel_three_nr32->volume_code == 0 
-                             ? 4 : sound.channel_three_nr32->volume_code - 1);
+                        (sound.nr32->volume_code == 0 
+                             ? 4 : sound.nr32->volume_code - 1);
                 }
 
                 /* if DAC is off, disable the channel */
-                if (sound.channel_three_nr30->dac == 0)
+                if (sound.nr30->dac == 0)
                     sound.channel_three.active = 0;
+
+                /* extra length clock if length == 256 */
+                /* and FS is in the fist half          */
+                if ((sound.fs_cycles & 0x01) == 0x00 &&
+                     sound.channel_three.length == 256)
+                    sound_length_ctrl_step_ch(sound.nr34->length_enable,
+                               &sound.channel_three.length,
+                               &sound.channel_three.active);
+
+                /* i accessed to the wave RAM... */
+                sound.channel_three.ram_access = sound.channel_three.cycles; // + 6;
             }
+            break;
+
+        case 0xFF20:
+
+            sound.channel_four.length = 64 - sound.nr41->length_load;
+
             break;
 
         case 0xFF21:
 
-            /* volume 0 = turn off the DAC = turn off channeru */
-            if (sound.channel_four_nr42->volume == 0 &&
-                sound.channel_four_nr42->add == 0)
+            /* highest 5 bits cleared = turn off the DAC = turn off channeru */
+            if (sound.nr42->volume == 0 &&
+                sound.nr42->add == 0)
                 sound.channel_four.active = 0;
 
             break;
 
         case 0xFF23:
 
+            /* length counter turned on */
+            if (sound.nr44->length_enable)
+            {
+                nr44_t *old_nr44 = (nr44_t *) &old;
+
+                /* give an extra length clock if                 */
+                /* 1) we switched from off to on the len counter */
+                /* 2) we are in the first half of len clock      */
+                /* 3) actual length is not zero                  */
+                if ((old_nr44->length_enable == 0) &&
+                    ((sound.fs_cycles & 0x01) == 0x00) &&
+                    (sound.channel_four.length != 0))
+                    sound_length_ctrl_step_ch(sound.nr44->length_enable,
+                               &sound.channel_four.length,
+                               &sound.channel_four.active);
+            }
+
             if (v & 0x80) 
             {
-                uint8_t len = sound.channel_four_nr41->length_load;
+                uint8_t len = sound.nr41->length_load;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_four.active = 1;
 
                 /* calc length */
-                sound.channel_four.length = 64 - len;
+                if (sound.channel_four.length == 0)
+                    sound.channel_four.length = 64;
 
                 /* if DAC is off, turn off the channel */
-                if (sound.channel_four_nr42->add == 0 &&
-                    sound.channel_four_nr42->volume == 0)
+                if (sound.nr42->add == 0 &&
+                    sound.nr42->volume == 0)
                     sound.channel_four.active = 0;
+
+                /* extra length clock if length == 64 and FS is in the fist half */
+                if ((sound.fs_cycles & 0x01) == 0x00 &&
+                     sound.channel_four.length == 64)
+                    sound_length_ctrl_step_ch(sound.nr44->length_enable,
+                               &sound.channel_four.length,
+                               &sound.channel_four.active);
             }
 
             break;
 
         case 0xFF26:
 
+            // return;
+
             if (v & 0x80)
             {
-                // TODO
+                /* power on! */ 
+                if (!(old & 0x80))
+                {
+                    /* reset frame sequencer so the next step will be zero */
+                    sound.fs_cycles = 7;
+
+                    /* reset wave index */
+                    sound.channel_three.index = 0;
+
+                    /* wave samples are resetted */
+                    bzero(sound.wave_table, 16);
+                }
             } 
             else
             {
                 /* length counters are unaffected */
-                uint8_t ch1 = sound.channel_one_nr11->length_load;
-                uint8_t ch2 = sound.channel_two_nr21->length_load;
-                uint8_t ch3 = sound.channel_three_nr31->length_load;
-                uint8_t ch4 = sound.channel_four_nr41->length_load;
+//                uint8_t ch1 = sound.nr11->length_load;
+//                uint8_t ch2 = sound.nr21->length_load;
+//                uint8_t ch3 = sound.nr31->length_load;
+//                uint8_t ch4 = sound.nr41->length_load;
 
                 /* clear all the sound memory */
                 bzero(mmu_addr(0xFF10), 22);
 
                 /* restore length */
-                sound.channel_one_nr11->length_load = ch1;
-                sound.channel_two_nr21->length_load = ch2;
-                sound.channel_three_nr31->length_load = ch3;
-                sound.channel_four_nr41->length_load = ch4;
+             //   sound.nr11->length_load = ch1;
+             //   sound.nr21->length_load = ch2;
+             //   sound.nr31->length_load = ch3;
+             //   sound.nr41->length_load = ch4;
 
                 /* turn off every channeru */
                 sound.channel_one.active = 0;
@@ -939,6 +1208,24 @@ void static __always_inline sound_write_reg(uint16_t a, uint8_t v)
             
     }
 }
+
+
+void static inline sound_write_wave(uint16_t a, uint8_t v)
+{
+
+    if (sound.channel_three.active)
+    {
+        if (sound.channel_three.ram_access != 0)
+            return;
+
+        sound.wave_table[sound.channel_three.index >> 1] = v;
+
+        return;
+    }
+
+    sound.wave_table[a - 0xFF30] = v;
+}
+
 
 void sound_term()
 {

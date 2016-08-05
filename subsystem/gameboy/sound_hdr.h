@@ -20,134 +20,134 @@
 #ifndef __SOUND_HDR__
 #define __SOUND_HDR__
 
-typedef struct channel_one_nr10_s
+typedef struct nr10_s
 {
     uint8_t shift:3;
     uint8_t negate:1;
     uint8_t sweep_period:3;
     uint8_t spare:1;
 
-} channel_one_nr10_t;
+} nr10_t;
 
-typedef struct channel_one_nr11_s
+typedef struct nr11_s
 {
     uint8_t length_load:6;
     uint8_t duty:2;
 
-} channel_one_nr11_t;
+} nr11_t;
 
-typedef struct channel_one_nr12_s
+typedef struct nr12_s
 {
     uint8_t period:3;
     uint8_t add:1;
     uint8_t volume:4;
 
-} channel_one_nr12_t;
+} nr12_t;
 
-typedef struct channel_one_nr13_s
+typedef struct nr13_s
 {
     uint8_t frequency_lsb;
 
-} channel_one_nr13_t;
+} nr13_t;
 
-typedef struct channel_one_nr14_s
+typedef struct nr14_s
 {
     uint8_t frequency_msb:3;
     uint8_t spare:3;
     uint8_t length_enable:1;
     uint8_t trigger:1;
 
-} channel_one_nr14_t;
+} nr14_t;
 
-typedef struct channel_two_nr21_s
+typedef struct nr21_s
 {
     uint8_t length_load:6;
     uint8_t duty:2;
 
-} channel_two_nr21_t;
+} nr21_t;
 
-typedef struct channel_two_nr22_s
+typedef struct nr22_s
 {
     uint8_t period:3;
     uint8_t add:1;
     uint8_t volume:4;
 
-} channel_two_nr22_t;
+} nr22_t;
 
-typedef struct channel_two_nr23_s
+typedef struct nr23_s
 {
     uint8_t frequency_lsb;
 
-} channel_two_nr23_t;
+} nr23_t;
 
-typedef struct channel_two_nr24_s
+typedef struct nr24_s
 {
     uint8_t frequency_msb:3;
     uint8_t spare:3;
     uint8_t length_enable:1;
     uint8_t trigger:1;
 
-} channel_two_nr24_t;
+} nr24_t;
 
 
-typedef struct channel_three_nr30_s
+typedef struct nr30_s
 {
     uint8_t spare:7;
     uint8_t dac:1;
 
-} channel_three_nr30_t;
+} nr30_t;
 
-typedef struct channel_three_nr31_s
+typedef struct nr31_s
 {
     uint8_t length_load;
 
-} channel_three_nr31_t;
+} nr31_t;
 
-typedef struct channel_three_nr32_s
+typedef struct nr32_s
 {
     uint8_t spare:5;
     uint8_t volume_code:2;
     uint8_t spare2:1;
 
-} channel_three_nr32_t;
+} nr32_t;
 
-typedef struct channel_three_nr33_s
+typedef struct nr33_s
 {
     uint8_t frequency_lsb;
 
-} channel_three_nr33_t;
+} nr33_t;
 
-typedef struct channel_three_nr24_s
+typedef struct nr34_s
 {
     uint8_t frequency_msb:3;
     uint8_t spare:3;
     uint8_t length_enable:1;
     uint8_t trigger:1;
 
-} channel_three_nr34_t;
+} nr34_t;
 
-typedef struct channel_four_nr41_s
+typedef struct nr41_s
 {
     uint8_t length_load:6;
     uint8_t spare:2;
 
-} channel_four_nr41_t;
+} nr41_t;
 
-typedef struct channel_four_nr42_s
+typedef struct nr42_s
 {
     uint8_t period:3;
     uint8_t add:1;
     uint8_t volume:4;
 
-} channel_four_nr42_t;
+} nr42_t;
 
-typedef struct channel_four_nr44_s
+typedef struct nr44_s
 {
     uint8_t spare:6;
     uint8_t length_enable:1;
     uint8_t trigger:1;
 
-} channel_four_nr44_t;
+} nr44_t;
 
 typedef struct nr50_s
 {
@@ -188,6 +188,8 @@ typedef struct channel_square_s
     int16_t  sample;
     int16_t  sweep_active;
     int16_t  sweep_cnt;
+    int16_t  sweep_neg;
+    int16_t  sweep_next;
     int16_t  volume;
     uint32_t sweep_shadow_frequency;
 
@@ -197,6 +199,7 @@ typedef struct channel_wave_s
 {
     uint8_t  active;
     uint8_t  index;
+    uint16_t ram_access;
     int16_t  sample;
     int16_t  wave[32];
     int16_t  cycles;
@@ -215,30 +218,30 @@ typedef struct channel_noise_s
 
 typedef struct sound_s
 {
-    channel_one_nr10_t   *channel_one_nr10;
-    channel_one_nr11_t   *channel_one_nr11;
-    channel_one_nr12_t   *channel_one_nr12;
-    channel_one_nr13_t   *channel_one_nr13;
-    channel_one_nr14_t   *channel_one_nr14;
+    nr10_t  *nr10;
+    nr11_t  *nr11;
+    nr12_t  *nr12;
+    nr13_t  *nr13;
+    nr14_t  *nr14;
 
-    channel_two_nr21_t   *channel_two_nr21;
-    channel_two_nr22_t   *channel_two_nr22;
-    channel_two_nr23_t   *channel_two_nr23;
-    channel_two_nr24_t   *channel_two_nr24;
+    nr21_t  *nr21;
+    nr22_t  *nr22;
+    nr23_t  *nr23;
+    nr24_t  *nr24;
 
-    channel_three_nr30_t *channel_three_nr30;
-    channel_three_nr31_t *channel_three_nr31;
-    channel_three_nr32_t *channel_three_nr32;
-    channel_three_nr33_t *channel_three_nr33;
-    channel_three_nr34_t *channel_three_nr34;
+    nr30_t  *nr30;
+    nr31_t  *nr31;
+    nr32_t  *nr32;
+    nr33_t  *nr33;
+    nr34_t  *nr34;
 
-    channel_four_nr41_t  *channel_four_nr41;
-    channel_four_nr42_t  *channel_four_nr42;
-    channel_four_nr44_t  *channel_four_nr44;
+    nr41_t  *nr41;
+    nr42_t  *nr42;
+    nr44_t  *nr44;
 
-    nr50_t               *nr50;
-    nr51_t               *nr51;
-    nr52_t               *nr52;
+    nr50_t  *nr50;
+    nr51_t  *nr51;
+    nr52_t  *nr52;
 
     uint8_t              *wave_table;
 
@@ -247,7 +250,7 @@ typedef struct sound_s
     channel_wave_t        channel_three;
     channel_noise_t       channel_four;
 
-    uint32_t              fs_cycles;
+    uint8_t               fs_cycles;
 
 } sound_t;
 
@@ -257,6 +260,13 @@ sound_t sound;
 /* prototype */
 void    static __always_inline sound_write_reg(uint16_t a, uint8_t v);
 uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v);
+
+
+
+
+int sound_req = 0;
+int sound_push = 0;
+
 
 #endif
 

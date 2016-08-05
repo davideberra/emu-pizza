@@ -162,7 +162,13 @@ uint8_t static __always_inline mmu_read(uint16_t a)
 
     /* changes on sound registers? */
     if (a >= 0xFF10 && a <= 0xFF3F)
+    {
+//        uint8_t v = sound_read_reg(a, memory[a]);
+
+//        printf("SOUND LEGGO DA %04x - VAL %02x\n", a, v);
+
         return sound_read_reg(a, memory[a]);
+    }
 
     return memory[a];
 }
@@ -293,7 +299,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
     if (a >= 0xE000)
     {
         /* changes on sound registers? */
-        if (a >= 0xFF10 && a <= 0xFF26)
+        if (a >= 0xFF10 && a <= 0xFF3F)
         {
             /* set memory */
             sound_write_reg(a, v);
