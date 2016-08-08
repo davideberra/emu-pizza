@@ -92,7 +92,7 @@ void static mmu_init_ram(uint32_t c)
 }
 
 /* update DMA internal state given CPU T-states */
-void static __always_inline mmu_step(uint8_t t)
+void mmu_step(uint8_t t)
 {
     if (mmu_dma_address != 0x00)
     {
@@ -126,19 +126,19 @@ void static mmu_load_cartridge(uint8_t *data, size_t sz)
 }
 
 /* move 8 bit from s to d */
-void static __always_inline mmu_move(uint16_t d, uint16_t s)
+void static inline mmu_move(uint16_t d, uint16_t s)
 {
     mmu_write(d, mmu_read(s));
 }
 
 /* return absolute memory address */
-void static __always_inline *mmu_addr(uint16_t a)
+void static inline *mmu_addr(uint16_t a)
 {
     return (void *) &memory[a];
 }
 
 /* read 8 bit data from a memory addres (not affecting cycles) */
-uint8_t static __always_inline mmu_read_no_cyc(uint16_t a)
+uint8_t static inline mmu_read_no_cyc(uint16_t a)
 {
     if (a >= 0xE000 && a <= 0xFDFF)
         return memory[a - 0x2000];
@@ -147,7 +147,7 @@ uint8_t static __always_inline mmu_read_no_cyc(uint16_t a)
 }
 
 /* read 8 bit data from a memory addres */
-uint8_t static __always_inline mmu_read(uint16_t a)
+uint8_t static inline mmu_read(uint16_t a)
 {
     /* always takes 4 cycles */
     cycles_step(4);
@@ -174,13 +174,13 @@ uint8_t static __always_inline mmu_read(uint16_t a)
 }
 
 /* write 16 bit block on a memory address (no cycles affected) */
-void static __always_inline mmu_write_no_cyc(uint16_t a, uint8_t v)
+void static inline mmu_write_no_cyc(uint16_t a, uint8_t v)
 {
     memory[a] = v;
 }
 
 /* write 16 bit block on a memory address */
-void static __always_inline mmu_write(uint16_t a, uint8_t v)
+void static inline mmu_write(uint16_t a, uint8_t v)
 {
     /* update cycles AFTER memory set */
     cycles_step(4);
@@ -350,7 +350,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 }
 
 /* read 16 bit data from a memory addres */
-unsigned int static __always_inline mmu_read_16(uint16_t a)
+unsigned int static inline mmu_read_16(uint16_t a)
 {
     /* 16 bit read = +8 cycles */
     cycles_step(4);
@@ -360,7 +360,7 @@ unsigned int static __always_inline mmu_read_16(uint16_t a)
 }
 
 /* write 16 bit block on a memory address */
-void static __always_inline mmu_write_16(uint16_t a, uint16_t v)
+void static inline mmu_write_16(uint16_t a, uint16_t v)
 {
     memory[a] = (uint8_t) (v & 0x00ff);
     memory[a + 1] = (uint8_t) (v >> 8);

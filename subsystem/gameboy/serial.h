@@ -50,7 +50,7 @@ void serial_init()
     serial_if   = mmu_addr(0xFF0F);
 }
 
-void static __always_inline serial_step(uint8_t t)
+void serial_step(uint8_t t)
 {
     if (serial_ctrl->transfer_start && serial_ctrl->clock)
     {

@@ -23,7 +23,7 @@
 #include <stdint.h>
 
 void serial_init();
-void static __always_inline serial_step(uint8_t t);
+void serial_step(uint8_t t);
 
 typedef struct serial_ctrl_s
 { 

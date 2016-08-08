@@ -42,7 +42,7 @@ void timer_init()
 }
 
 /* update timer internal state given CPU T-states */
-void static __always_inline timer_step(uint8_t t)
+void timer_step(uint8_t t)
 {
     /* div_sub always run */
     timer.div_sub += t;

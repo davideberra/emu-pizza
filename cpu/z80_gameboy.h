@@ -143,7 +143,7 @@ void z80_print_state()
 
 #ifndef __CYCLES__
 
-void static __always_inline cycles_step(uint8_t cycles)
+void static inline cycles_step(uint8_t cycles)
 {
     state.cycles += cycles;
 }
@@ -175,19 +175,19 @@ void static mmu_load(uint8_t *data, size_t sz, uint16_t a)
 }
 
 /* move 8 bit from s to d */
-void static __always_inline mmu_move(uint16_t d, uint16_t s)
+void static inline mmu_move(uint16_t d, uint16_t s)
 {
     memory[d] = memory[s];
 }
 
 /* return absolute memory address */
-uint8_t static __always_inline *mmu_addr(uint16_t a)
+uint8_t static inline *mmu_addr(uint16_t a)
 {
     return &memory[a];
 }
 
 /* read 8 bit data from a memory addres */
-uint8_t static __always_inline mmu_read(uint16_t a)
+uint8_t static inline mmu_read(uint16_t a)
 {
     /* update cycles */
     cycles_step(4);
@@ -196,13 +196,13 @@ uint8_t static __always_inline mmu_read(uint16_t a)
 }
 
 /* read 8 bit data from a memory addres */
-uint8_t static __always_inline mmu_read_no_cyc(uint16_t a)
+uint8_t static inline mmu_read_no_cyc(uint16_t a)
 {
     return memory[a];
 }
 
 /* write 16 bit block on a memory address */
-void static __always_inline mmu_write(uint16_t a, uint8_t v)
+void static inline mmu_write(uint16_t a, uint8_t v)
 {
     /* update cycles */
     cycles_step(4);
@@ -211,7 +211,7 @@ void static __always_inline mmu_write(uint16_t a, uint8_t v)
 }
 
 /* read 16 bit data from a memory addres */
-unsigned int static __always_inline mmu_read_16(uint16_t a)
+unsigned int static inline mmu_read_16(uint16_t a)
 {
     /* update cycles */
     cycles_step(4);
@@ -221,7 +221,7 @@ unsigned int static __always_inline mmu_read_16(uint16_t a)
 }
 
 /* write 16 bit block on a memory address */
-void static __always_inline mmu_write_16(uint16_t a, uint16_t v)
+void static inline mmu_write_16(uint16_t a, uint16_t v)
 {
     /* update cycles */
     cycles_step(4);
@@ -240,27 +240,27 @@ void static __always_inline mmu_write_16(uint16_t a, uint16_t v)
 /********************************/
 
 /* calc flags SZ with 16 bit param */
-void static __always_inline z80_set_flags_z(unsigned int v)
+void static inline z80_set_flags_z(unsigned int v)
 {
     state.flags.z  = (v & 0xff) == 0;
 }
 
 /* calc flags SZC with 16 bit param */
-void static __always_inline z80_set_flags_zc(unsigned int v)
+void static inline z80_set_flags_zc(unsigned int v)
 {
     state.flags.z = (v & 0xff) == 0;
     state.flags.cy = (v > 0xff);
 }
 
 /* calc flags SZC with 32 bit result */
-void static __always_inline z80_set_flags_zc_16(unsigned int v)
+void static inline z80_set_flags_zc_16(unsigned int v)
 {
     state.flags.z  = (v & 0xffff) == 0;
     state.flags.cy = (v > 0xffff);
 }
 
 /* calc AC for given operands */
-void static __always_inline z80_set_flags_ac(uint8_t a, uint8_t b,
+void static inline z80_set_flags_ac(uint8_t a, uint8_t b,
                                              unsigned int r)
 {
     /* calc xor for AC and overflow */
@@ -273,7 +273,7 @@ void static __always_inline z80_set_flags_ac(uint8_t a, uint8_t b,
 }
 
 /* calc AC and overflow flag given operands (16 bit flavour) */
-void static __always_inline z80_set_flags_ac_16(unsigned int a, 
+void static inline z80_set_flags_ac_16(unsigned int a, 
                                                 unsigned int b, 
                                                 unsigned int r)
 {
@@ -287,7 +287,7 @@ void static __always_inline z80_set_flags_ac_16(unsigned int a,
 }
 
 /* calc AC flag given operands and result */
-char static __always_inline z80_calc_ac(uint8_t a, uint8_t b, unsigned int r)
+char static inline z80_calc_ac(uint8_t a, uint8_t b, unsigned int r)
 {
     /* calc xor for AC and overflow */
     unsigned int c = a ^ b ^ r;
@@ -352,7 +352,7 @@ void static z80_calc_flags_mask_array()
 
 
 /* add A register, b parameter and Carry flag, then calculate flags */
-void static __always_inline z80_adc(uint8_t b)
+void static inline z80_adc(uint8_t b)
 {
     /* calc result */
     unsigned int result = state.a + b + state.flags.cy;
@@ -370,7 +370,7 @@ void static __always_inline z80_adc(uint8_t b)
 }
 
 /* add a and b parameters (both 16 bits) and the carry, thencalculate flags */
-unsigned int static __always_inline z80_adc_16(unsigned int a, unsigned int b)
+unsigned int static inline z80_adc_16(unsigned int a, unsigned int b)
 {
     /* calc result */
     unsigned int result = a + b + state.flags.cy;
@@ -389,7 +389,7 @@ unsigned int static __always_inline z80_adc_16(unsigned int a, unsigned int b)
 }
 
 /* add A register and b parameter and calculate flags */
-void static __always_inline z80_add(uint8_t b)
+void static inline z80_add(uint8_t b)
 {
     /* calc result */
     unsigned int result = state.a + b;
@@ -407,7 +407,7 @@ void static __always_inline z80_add(uint8_t b)
 }
 
 /* add a and b parameters (both 16 bits), then calculate flags */
-unsigned int static __always_inline z80_add_16(unsigned int a, unsigned int b)
+unsigned int static inline z80_add_16(unsigned int a, unsigned int b)
 {
     /* calc result */
     unsigned int result = a + b;
@@ -428,7 +428,7 @@ unsigned int static __always_inline z80_add_16(unsigned int a, unsigned int b)
 }
 
 /*  b AND A register and calculate flags */
-void static __always_inline z80_ana(uint8_t b)
+void static inline z80_ana(uint8_t b)
 {
     /* calc result */
     uint8_t result = state.a & b;
@@ -443,7 +443,7 @@ void static __always_inline z80_ana(uint8_t b)
 }
 
 /* BIT instruction, test pos-th bit and set flags */
-void static __always_inline z80_bit(uint8_t *v, uint8_t pos, uint8_t muffa)
+void static inline z80_bit(uint8_t *v, uint8_t pos, uint8_t muffa)
 {
     uint8_t r = *v & (0x01 << pos);
 
@@ -456,7 +456,7 @@ void static __always_inline z80_bit(uint8_t *v, uint8_t pos, uint8_t muffa)
 }
 
 /* push the current PC on the stack and move PC to the function addr */
-int static __always_inline z80_call(unsigned int addr)
+int static inline z80_call(unsigned int addr)
 {
     /* move to the next instruction */
     state.pc += 3;
@@ -477,7 +477,7 @@ int static __always_inline z80_call(unsigned int addr)
 }
 
 /* compare b parameter against A register and calculate flags */
-void static __always_inline z80_cmp(uint8_t b)
+void static inline z80_cmp(uint8_t b)
 {
     /* calc result */ 
     unsigned int result = state.a - b;
@@ -493,7 +493,7 @@ void static __always_inline z80_cmp(uint8_t b)
 }
 
 /* compare b parameter against A register and calculate flags */
-void static __always_inline z80_cpid(uint8_t b, int8_t add)
+void static inline z80_cpid(uint8_t b, int8_t add)
 {
     /* calc result */
     unsigned int result = state.a - b;
@@ -530,7 +530,7 @@ void static __always_inline z80_cpid(uint8_t b, int8_t add)
 }
 
 /* DAA instruction... what else? */
-void static __always_inline z80_daa()
+void static inline z80_daa()
 {
     unsigned int a = state.a;
     uint8_t al = state.a & 0x0f;
@@ -567,7 +567,7 @@ void static __always_inline z80_daa()
 }
 
 /* DAA instruction... what else? */
-void static __always_inline z80_daa_ignore_n()
+void static inline z80_daa_ignore_n()
 {
     unsigned int a = state.a;
     uint8_t al = state.a & 0x0f;
@@ -597,7 +597,7 @@ void static __always_inline z80_daa_ignore_n()
 }
 
 /* add a and b parameters (both 16 bits) and the carry, thencalculate flags */
-unsigned int static __always_inline dad_16(unsigned int a, unsigned int b)
+unsigned int static inline dad_16(unsigned int a, unsigned int b)
 {
     /* calc result */
     unsigned int result = a + b;
@@ -618,7 +618,7 @@ unsigned int static __always_inline dad_16(unsigned int a, unsigned int b)
 }
 
 /* dec the operand and return result increased by one */
-uint8_t static __always_inline z80_dcr(uint8_t b)
+uint8_t static inline z80_dcr(uint8_t b)
 {
     unsigned int result = b - 1;
 
@@ -637,7 +637,7 @@ uint8_t static __always_inline z80_dcr(uint8_t b)
 }
 
 /* inc the operand and return result increased by one */
-uint8_t static __always_inline z80_inr(uint8_t b)
+uint8_t static inline z80_inr(uint8_t b)
 {
     unsigned int result = b + 1;
   
@@ -656,7 +656,7 @@ uint8_t static __always_inline z80_inr(uint8_t b)
 }
 
 /* same as call, but save on the stack the current PC instead of next instr */
-int static __always_inline z80_intr(unsigned int addr)
+int static inline z80_intr(unsigned int addr)
 {
     /* push the current PC into stack */
     mmu_write_16(state.sp - 2, state.pc);
@@ -673,7 +673,7 @@ int static __always_inline z80_intr(unsigned int addr)
 }
 
 /* copy (HL) in (DE) and decrease HL, DE and BC */
-void static __always_inline z80_ldd()
+void static inline z80_ldd()
 {
     uint8_t byte;
 
@@ -697,7 +697,7 @@ void static __always_inline z80_ldd()
 }
 
 /* copy (HL) in (DE) and increase HL and DE. BC is decreased */
-void static __always_inline z80_ldi()
+void static inline z80_ldi()
 {
     uint8_t byte;
 
@@ -728,7 +728,7 @@ void static __always_inline z80_ldi()
 }
 
 /* negate register A */
-void static __always_inline z80_neg()
+void static inline z80_neg()
 {
     /* calc result */
     unsigned int result = 0 - state.a;
@@ -746,7 +746,7 @@ void static __always_inline z80_neg()
 }
 
 /* OR b parameter and A register and calculate flags */
-void static __always_inline z80_ora(uint8_t b)
+void static inline z80_ora(uint8_t b)
 {
     state.a |= b;
 
@@ -757,7 +757,7 @@ void static __always_inline z80_ora(uint8_t b)
 }
 
 /* RES instruction, put a 0 on pos-th bit and set flags */
-uint8_t static __always_inline z80_res(uint8_t *v, uint8_t pos)
+uint8_t static inline z80_res(uint8_t *v, uint8_t pos)
 {
     *v &= ~(0x01 << pos);
 
@@ -765,7 +765,7 @@ uint8_t static __always_inline z80_res(uint8_t *v, uint8_t pos)
 }
 
 /* pop the return address from the stack and move PC to that address */
-int static __always_inline z80_ret()
+int static inline z80_ret()
 {
     state.pc = mmu_read_16(state.sp); 
     state.sp += 2;
@@ -777,7 +777,7 @@ int static __always_inline z80_ret()
 }
 
 /* RL (Rotate Left) instruction */
-uint8_t static __always_inline z80_rl(uint8_t *v, char with_carry)
+uint8_t static inline z80_rl(uint8_t *v, char with_carry)
 {
     uint8_t carry;
 
@@ -800,7 +800,7 @@ uint8_t static __always_inline z80_rl(uint8_t *v, char with_carry)
 }
 
 /* RLA instruction */
-uint8_t static __always_inline z80_rla(uint8_t *v, char with_carry)
+uint8_t static inline z80_rla(uint8_t *v, char with_carry)
 {
     uint8_t carry;
 
@@ -823,7 +823,7 @@ uint8_t static __always_inline z80_rla(uint8_t *v, char with_carry)
 }
 
 /* RLD instruction */
-void static __always_inline z80_rld()
+void static inline z80_rld()
 {
     uint8_t hl = mmu_read(*state.hl);
 
@@ -854,7 +854,7 @@ void static __always_inline z80_rld()
 }
 
 /* RR instruction */
-uint8_t static __always_inline z80_rr(uint8_t *v, char with_carry)
+uint8_t static inline z80_rr(uint8_t *v, char with_carry)
 {
     uint8_t carry;
 
@@ -877,7 +877,7 @@ uint8_t static __always_inline z80_rr(uint8_t *v, char with_carry)
 }
 
 /* RRA instruction */
-uint8_t static __always_inline z80_rra(uint8_t *v, char with_carry)
+uint8_t static inline z80_rra(uint8_t *v, char with_carry)
 {
     uint8_t carry;
 
@@ -907,7 +907,7 @@ uint8_t static __always_inline z80_rra(uint8_t *v, char with_carry)
 }
 
 /* RRD instruction */
-void static __always_inline z80_rrd()
+void static inline z80_rrd()
 {
     uint8_t hl = mmu_read(*state.hl);
 
@@ -937,7 +937,7 @@ void static __always_inline z80_rrd()
 }
 
 /* subtract b parameter and Carry from A register and calculate flags */
-void static __always_inline z80_sbc(uint8_t b)
+void static inline z80_sbc(uint8_t b)
 {
     /* calc result */
     unsigned int result = state.a - b - state.flags.cy;
@@ -955,7 +955,7 @@ void static __always_inline z80_sbc(uint8_t b)
 }
 
 /* subtract a and b parameters (both 16 bits) and the carry, then calculate flags */
-unsigned int static __always_inline z80_sbc_16(unsigned int a, unsigned int b)
+unsigned int static inline z80_sbc_16(unsigned int a, unsigned int b)
 {
     /* calc result */
     unsigned int result = a - b - state.flags.cy;
@@ -974,7 +974,7 @@ unsigned int static __always_inline z80_sbc_16(unsigned int a, unsigned int b)
 }   
 
 /* SET instruction, put a 1 on pos-th bit and set flags */
-uint8_t static __always_inline z80_set(uint8_t *v, uint8_t pos)
+uint8_t static inline z80_set(uint8_t *v, uint8_t pos)
 {
     *v |= (0x01 << pos);
 
@@ -982,7 +982,7 @@ uint8_t static __always_inline z80_set(uint8_t *v, uint8_t pos)
 }
 
 /* SL instruction (SLA = v * 2, SLL = v * 2 + 1) */
-uint8_t static __always_inline z80_sl(uint8_t *v, char one_insertion)
+uint8_t static inline z80_sl(uint8_t *v, char one_insertion)
 {
     /* move pointed value to local (gives an huge boost in perf!) */
     uint8_t l = *v;
@@ -1003,7 +1003,7 @@ uint8_t static __always_inline z80_sl(uint8_t *v, char one_insertion)
 }
 
 /* SR instruction (SRA = preserve 8th bit, SRL = discard 8th bit) */
-uint8_t static __always_inline z80_sr(uint8_t *v, char preserve)
+uint8_t static inline z80_sr(uint8_t *v, char preserve)
 {
     uint8_t bit = 0;
 
@@ -1026,7 +1026,7 @@ uint8_t static __always_inline z80_sr(uint8_t *v, char preserve)
 }
 
 /* subtract b parameter from A register and calculate flags */
-void static __always_inline z80_sub(uint8_t b)
+void static inline z80_sub(uint8_t b)
 {
     /* calc result */
     unsigned int result = state.a - b;
@@ -1044,7 +1044,7 @@ void static __always_inline z80_sub(uint8_t b)
 }
 
 /* xor b parameter and A register and calculate flags */
-void static __always_inline z80_xra(uint8_t b)
+void static inline z80_xra(uint8_t b)
 {
     /* calc result */
     state.a ^= b;
@@ -1065,7 +1065,7 @@ void static __always_inline z80_xra(uint8_t b)
 
 
 /* Z80 extended OPs */
-int static __always_inline z80_ext_cb_execute()
+int static inline z80_ext_cb_execute()
 {
     uint8_t byte = 1;
     int     b = 2;
@@ -1303,7 +1303,7 @@ int static __always_inline z80_ext_cb_execute()
 
 /* really execute the OP. Could be ran by normal execution or *
  * because an interrupt occours                               */
-int static __always_inline z80_execute(unsigned char code)
+int static inline z80_execute(unsigned char code)
 {
     int          b = 1;
     uint8_t     *p;

@@ -23,8 +23,8 @@
 #include <stdint.h>
 
 /* prototypes */
-void                        timer_init();
-void static __always_inline timer_step(uint8_t t);
+void timer_init();
+void timer_step(uint8_t t);
 
 /* Gameboy Timer status */
 typedef struct gameboy_timer_s

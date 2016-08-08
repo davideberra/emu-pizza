@@ -21,9 +21,9 @@
 #define __GPU_HDR__
 
 /* prototypes */
-void static                 gpu_init();
-void static __always_inline gpu_step(uint8_t t);
-void static                 gpu_toggle(uint8_t state);
+void gpu_init();
+void gpu_step(uint8_t t);
+void gpu_toggle(uint8_t state);
 
 /* Gameboy LCD Control - R/W accessing 0xFF40 address */
 typedef struct gpu_lcd_ctrl_s

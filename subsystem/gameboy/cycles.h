@@ -44,7 +44,7 @@ void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
 
 
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
-void static __always_inline cycles_step(uint8_t s)
+void cycles_step(uint8_t s)
 {
     cycles_cnt += s;
 
@@ -141,14 +141,14 @@ char cycles_init()
 /* callback for timer events (64 times per second) */
 void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 {
-    prot++;
+    /*prot++;
 
     int sval;
 
     sem_getvalue(&cycles_sem, &sval);
 
     if (sval > 0)
-        printf("SVAL %d\n", sval);
+        printf("SVAL %d\n", sval);*/
 
     sem_post(&cycles_sem);
 }

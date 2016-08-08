@@ -141,6 +141,14 @@ typedef struct nr42_s
 
 } nr42_t;
 
+typedef struct nr43_s
+{
+    uint8_t divisor:3;
+    uint8_t width:1;
+    uint8_t shift:4;
+
+} nr43_t;
+
 typedef struct nr44_s
 {
     uint8_t spare:6;
@@ -212,8 +220,14 @@ typedef struct channel_wave_s
 typedef struct channel_noise_s
 {
     uint8_t  active;
+    uint8_t  envelope_cnt;
     uint32_t length;
-
+    uint16_t period_lfsr;
+    uint16_t cycles_cnt;
+    int16_t  volume;
+    int16_t  sample;
+    uint16_t reg;
+ 
 } channel_noise_t;
 
 typedef struct sound_s
@@ -237,6 +251,7 @@ typedef struct sound_s
 
     nr41_t  *nr41;
     nr42_t  *nr42;
+    nr43_t  *nr43;
     nr44_t  *nr44;
 
     nr50_t  *nr50;
@@ -258,11 +273,8 @@ typedef struct sound_s
 sound_t sound;
 
 /* prototype */
-void    static __always_inline sound_write_reg(uint16_t a, uint8_t v);
-uint8_t static __always_inline sound_read_reg(uint16_t a, uint8_t v);
-
-
-
+void    sound_write_reg(uint16_t a, uint8_t v);
+uint8_t sound_read_reg(uint16_t a, uint8_t v);
 
 int sound_req = 0;
 int sound_push = 0;

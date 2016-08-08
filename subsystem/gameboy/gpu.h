@@ -54,16 +54,16 @@ static SDL_Surface *screenSurface = NULL;
 interrupts_flags_t *gpu_if;
 
 /* internal functions prototypes */
-void static gpu_draw_sprite_line(gpu_oam_t *oam, 
-                                 uint8_t sprites_size,
-                                 uint8_t line);
+void gpu_draw_sprite_line(gpu_oam_t *oam, 
+                          uint8_t sprites_size,
+                          uint8_t line);
 
 /* as the name says.... */
 int gpu_magnify_rate = 3;
 
 
 /* init GPU states */
-void static gpu_init()
+void gpu_init()
 {
     bzero(&gpu, sizeof(gpu_t));
 
@@ -100,7 +100,7 @@ void static gpu_init()
 }
 
 /* turn on/off lcd */
-void static gpu_toggle(uint8_t state)
+void gpu_toggle(uint8_t state)
 {
     /* from off to on */
     if (state & 0x80)
@@ -127,7 +127,7 @@ void static gpu_toggle(uint8_t state)
 } 
 
 /* push frame on screen */
-void static gpu_draw_frame()
+void gpu_draw_frame()
 {
     int x,y,p;
 
@@ -173,7 +173,7 @@ void static gpu_draw_frame()
 
 
 /* draw a single line */
-void static gpu_draw_line(uint8_t line)
+void gpu_draw_line(uint8_t line)
 {
     int i, t, y, px_start, px_drawn;
     uint8_t *tiles_map, tile_subline;
@@ -312,9 +312,9 @@ void static gpu_draw_line(uint8_t line)
 
 
 /* draw a tile in x,y coordinates */
-void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
-                                          uint8_t frame_x, uint8_t frame_y,
-                                          uint32_t palette[4], char solid)
+void gpu_draw_tile(uint16_t base_address, int16_t tile_n,
+                   uint8_t frame_x, uint8_t frame_y,
+                   uint32_t palette[4], char solid)
 {
     int i, p, y, pos;
 
@@ -372,7 +372,7 @@ void static __always_inline gpu_draw_tile(uint16_t base_address, int16_t tile_n,
 }
 
 /* draw a sprite tile in x,y coordinates */
-void static gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
+void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
                                                  uint8_t line)
 {
     int p, x, y, i, j, pos, fb_x, off;
@@ -469,9 +469,9 @@ void static gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
 }
 
 /* update GPU frame buffer */
-void static gpu_update_frame_buffer()
+void gpu_update_frame_buffer()
 {
-    int i, x, y, z, xmin, xmax, ymin, ymax;
+    int x, y, z, xmin, xmax, ymin, ymax;
     uint8_t *tiles_map;
     uint16_t tiles_addr, tile_n; 
     uint16_t tile_pos_x, tile_pos_y;
@@ -561,7 +561,7 @@ void static gpu_update_frame_buffer()
 }
 
 /* update GPU internal state given CPU T-states */
-void static __always_inline gpu_step(uint8_t t)
+void gpu_step(uint8_t t)
 {
     char ly_changed = 0;
     char mode_changed = 0;
