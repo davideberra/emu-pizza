@@ -81,10 +81,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     uint8_t   byte;
     char      file_sav[1024];
     int       i;
-    uint32_t  benchmark_cnt = 0;
     SDL_Event e;
-
-    global_benchmark = 0;
 
     /* init z80 */
     z80_init(); 
@@ -281,15 +278,6 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* and repeat forever                                                  */
     while (!global_quit)
     {
-
-        if (global_benchmark)
-        {
-            benchmark_cnt++;
-
-            if (benchmark_cnt == 40000000)
-                break;
-        }
-
         /* get op */
         op   = mmu_read(state.pc);
 
@@ -304,7 +292,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
                                    mmu_read_no_cyc(state.sp + 1));
 
             printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, 
-                                   *state.de, *state.hl);
+                                                          *state.de, *state.hl);
         }
 
         /* execute instruction by the GB Z80 version */

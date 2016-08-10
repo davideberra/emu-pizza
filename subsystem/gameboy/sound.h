@@ -137,12 +137,9 @@ void static sound_init()
 /* update sound internal state given CPU T-states */
 void sound_step(uint8_t t)
 {
-    if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-        printf("NAN - %f\n", sound_sample_cycles_cnt);
-    
     sound_fs_cycles_cnt += 4;
     sound_sample_cycles_cnt += 4L;
- 
+
     if (sound.channel_three.ram_access > 0)
         sound.channel_three.ram_access -= 4;
 
@@ -380,13 +377,8 @@ void sound_step(uint8_t t)
         else
             sound_push_sample(0);
 
-        if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-            printf("NAN FASE 1- %f\n", sound_sample_cycles_cnt);
-
+        /* go back */
         sound_sample_cycles_cnt -= sound_sample_cycles;
-
-        if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-            printf("NAN FASE 2- %f\n", sound_sample_cycles_cnt);
     }
 }
 
@@ -436,11 +428,6 @@ void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
-//    sound_push++;
-
-//    if (sound_buffer_empty == 0)
-//        printf("PUSHO - %d \n", sound_buf_available);
-
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
   
@@ -458,8 +445,6 @@ void sound_push_sample(int16_t s)
     {
         sound_buffer_empty = 0;
 
-        // printf("SBLOCCO\n");
-
         pthread_cond_signal(&sound_cond); 
     }
 
@@ -468,13 +453,9 @@ void sound_push_sample(int16_t s)
     {
         sound_buffer_full = 1;
 
-        printf("CHINO COME L OVO\n");
-
         while (sound_buffer_full == 1)
             pthread_cond_wait(&sound_cond, &sound_mutex);
     }
-
-//    printf("FINE PUSH - %d \n", sound_buf_available);
 
     /* unlock it */
     pthread_mutex_unlock(&sound_mutex);
@@ -492,25 +473,11 @@ size_t sound_available_samples()
 /* read a block of data from circular buffer */
 void sound_read_samples(int len, int16_t *buf)
 {
-/*    printf("AVAILABILI: %d - WR: %d - RD: %d\n", sound_buf_available, sound_buf_wr, sound_buf_rd);
-
-    sound_req += len;
-
-    int to_read = len;
-
-    if (global_benchmark)
-    {
-        sound_buf_rd = sound_buf_wr; 
-        return;
-    } */
-
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
    
     int to_read = len;
 
-    // printf("AVAILABILI: %d - WR: %d - RD: %d\n", sound_buf_available, sound_buf_wr, sound_buf_rd);
- 
     /* not enough samples? read what we got */
     if (sound_buf_available < to_read)
     {
@@ -519,8 +486,6 @@ void sound_read_samples(int len, int16_t *buf)
 
         while (sound_buffer_empty == 1)
             pthread_cond_wait(&sound_cond, &sound_mutex);
-
-        // printf("SVUOTATO\n");
     }
 
     if (sound_buf_rd + to_read > SOUND_BUF_SZ)
@@ -1340,7 +1305,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
 void sound_write_wave(uint16_t a, uint8_t v)
 {
-
     if (sound.channel_three.active)
     {
         if (sound.channel_three.ram_access != 0)

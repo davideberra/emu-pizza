@@ -162,13 +162,7 @@ uint8_t static inline mmu_read(uint16_t a)
 
     /* changes on sound registers? */
     if (a >= 0xFF10 && a <= 0xFF3F)
-    {
-//        uint8_t v = sound_read_reg(a, memory[a]);
-
-//        printf("SOUND LEGGO DA %04x - VAL %02x\n", a, v);
-
         return sound_read_reg(a, memory[a]);
-    }
 
     return memory[a];
 }
@@ -209,11 +203,12 @@ void static inline mmu_write(uint16_t a, uint8_t v)
                     /* set them with new value */
                     b |= v & 0x1F;
 
-                    /* filter with max ROM available */
-                    uint8_t filter = 0xFF >> (7 - roms);
-
-                    /* filter result to get a value < max rom number */
-                    b &= filter;
+                    /* doesn't fit on max rom number? */
+                    if (b > (2 << roms))
+                    {
+                        /* filter result to get a value < max rom number */
+                        b %= (2 << roms);
+                    }
 
                     /* 0x00 is not valid, switch it to 0x01 */
                     if (b == 0x00)
@@ -239,11 +234,12 @@ void static inline mmu_write(uint16_t a, uint8_t v)
                         /* set them with new value */
                         b |= (v << 5);
 
-                        /* filter with max ROM available */
-                        uint8_t filter = 0xFF >> (7 - roms);
-
-                        /* filter result to get a value < max rom number */
-                        b &= filter;
+                        /* doesn't fit on max rom number? */
+                        if (b > (2 << roms))
+                        {
+                            /* filter result to get a value < max rom number */
+                            b %= (2 << roms);
+                        }
 
                         if (b != rom_current_bank)
                         {

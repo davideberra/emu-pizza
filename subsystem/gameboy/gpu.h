@@ -44,6 +44,13 @@ typedef struct gpu_oam_s
 
 } gpu_oam_t;
 
+/* ordered sprite list */
+typedef struct oam_list_s
+{
+    int idx;
+    struct oam_list_s *next;
+} oam_list_t;
+
 /* window we'll be rendering to */
 static SDL_Window *window = NULL;
 
@@ -130,9 +137,8 @@ void gpu_toggle(uint8_t state)
 void gpu_draw_frame()
 {
     int x,y,p;
-
     uint32_t *pixel = screenSurface->pixels;
-   
+  
     /* magnify! */
     if (gpu_magnify_rate > 1)
     {
@@ -179,7 +185,11 @@ void gpu_draw_line(uint8_t line)
     uint8_t *tiles_map, tile_subline;
     uint16_t tiles_addr, tile_n, tile_idx, tile_line;
     uint16_t tile_y;
-  
+
+    /* avoid mess */
+    if (line > 144)
+        return;
+ 
     /* gotta show BG */
     if ((*gpu.lcd_ctrl).bg)
     {
@@ -295,18 +305,53 @@ void gpu_draw_line(uint8_t line)
         /* calc sprite height */
         uint8_t h = ((*gpu.lcd_ctrl).sprites_size + 1) * 8;
 
+        int sort[40];
+
+        /* prepare sorted list of oams */        
+        for (i=0; i<40; i++)
+            sort[i] = -1;
+        
         for (i=0; i<40; i++)
         {
-            /* extract sprites that intersect current drawn line */
-            if (oam[i].x != 0 && oam[i].y != 0 && 
-                oam[i].x < 168 && oam[i].y < 160 && 
+            /* the sprite intersects the current line? */
+            if (oam[i].x != 0 && oam[i].y != 0 &&
+                oam[i].x < 168 && oam[i].y < 160 &&
                 line < (oam[i].y + h - 16) &&
                 line >= (oam[i].y - 16))
-                gpu_draw_sprite_line(&oam[i], 
-                                     (*gpu.lcd_ctrl).sprites_size, line);
-        }
-    }
+            {
+                int j;
 
+                /* find its position on sort array */
+                for (j=0; j<40; j++)
+                {
+                    if (sort[j] == -1)
+                    {
+                        sort[j] = i;
+                        break;
+                    }
+
+                    if ((oam[i].y < oam[sort[j]].y) ||
+                        ((oam[i].y == oam[sort[j]].y) &&
+                         (oam[i].x < oam[sort[j]].x)))
+                    {
+                        int z;
+
+                        for (z=40; z>j; z--)
+                            sort[z] = sort[z-1];
+
+                        sort[j] = i;
+                        break;
+                    }
+                } 
+            }                  
+        } 
+
+        /* draw ordered sprite list */
+        for (i=0; i<40 && sort[i] != -1; i++)
+            gpu_draw_sprite_line(&oam[sort[i]], 
+                                 (*gpu.lcd_ctrl).sprites_size, line);
+        
+    }
 }
 
 
@@ -322,7 +367,7 @@ void gpu_draw_tile(uint16_t base_address, int16_t tile_n,
     uint8_t *tiles = mmu_addr(base_address);
 
     /* first pixel on frame buffer position */
-    uint32_t tile_pos_fb = (frame_y * 160) + frame_x;
+    uint32_t tile_pos_fb = (frame_y * 160); //  + frame_x;
 
     /* walk through 8x8 pixels                */ 
     /* (2bit per pixel  -> 4 pixels per byte  */
@@ -359,12 +404,15 @@ void gpu_draw_tile(uint16_t base_address, int16_t tile_n,
         for (i=0; i<8; i++)
         {
             /* over the last column? */
-            if (frame_x + i >= 160)
-                break;
+            uint8_t x = frame_x + (7 - i);
+
+            if (x > 159)
+                continue;
 
             /* calc position on frame buffer */
-            pos = pos_fb + (7 - i);
+            pos = pos_fb + x; 
 
+            /* can overwrite sprites? depends on pixel priority */
             if (gpu.priority[pos] == 0)
                 gpu.frame_buffer[pos] = palette[pxa[i]];
         }
@@ -379,7 +427,7 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
     uint8_t  sprite_bytes;
     int16_t  tile_ptr;
     uint32_t *palette;
-
+    
     /* get absolute address of tiles area */
     uint8_t *tiles = mmu_addr(0x8000);
 
@@ -456,10 +504,13 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
             if (pos >= 144 * 160 || pos < 0)
                 continue;
 
-            /* dont draw 0-color pixels */
+            /* push on screen pixels not set to zero (transparent) */
+            /* and if the priority is set to one, overwrite just   */
+            /* bg pixels set to zero                               */
             if ((pxa[i] != 0x00) &&
                (oam->priority == 0 || 
-               (oam->priority == 1 && gpu.frame_buffer[pos] == palette[0x00])))
+               (oam->priority == 1 && 
+                gpu.frame_buffer[pos] == gpu.bg_palette[0x00])))
             {
                 gpu.frame_buffer[pos] = palette[pxa[i]];
                 gpu.priority[pos] = !oam->priority;
@@ -474,7 +525,7 @@ void gpu_update_frame_buffer()
     int x, y, z, xmin, xmax, ymin, ymax;
     uint8_t *tiles_map;
     uint16_t tiles_addr, tile_n; 
-    uint16_t tile_pos_x, tile_pos_y;
+    uint8_t tile_pos_x, tile_pos_y;
 
     /* gotta show BG */
     if (0 && (*gpu.lcd_ctrl).bg)
@@ -546,12 +597,17 @@ void gpu_update_frame_buffer()
             tile_pos_y = (z / 32) * 8 + *(gpu.window_y);
 
             /* gone over the screen visible X? */
-            if (tile_pos_x >= 160)
+            /* being between last column and first one is valid */
+            if (tile_pos_x >= 160 && tile_pos_x < 248)
                 continue;
 
             /* gone over the screen visible Y? stop it */
             if (tile_pos_y >= 144)
                 break;
+
+            /* make it rotate */
+//            if (tile_pos_x > 247)
+//                tile_pos_x -= (256 - 160);
 
             gpu_draw_tile(tiles_addr, tile_n, 
                           (uint8_t) tile_pos_x, (uint8_t) tile_pos_y,

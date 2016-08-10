@@ -69,27 +69,6 @@ void cycles_step(uint8_t s)
         }
     }
 
-    if (cycles_cnt == cycles_clock)
-    {
-    /*    int sval;
-
-        sem_getvalue(&cycles_sem, &sval);
-
-        struct timeval te; 
-        gettimeofday(&te, NULL);
-
-        printf("%d.%d PRET %d PROT %d SVAL %d REQ %d PUSH %d\n", te.tv_sec, te.tv_usec / 1000, pret, prot, sval, 
-         sound_req, sound_push); */
-
-        sound_req =0;
-        sound_push =0;
-
-        pret = 0;
-        prot = 0;
-
-        cycles_cnt = 0;
-    }
-
     /* update memory state (for DMA) */
     mmu_step(s);
 
