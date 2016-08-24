@@ -17,22 +17,33 @@
 
 */
 
-#ifndef __CYCLES__
-#define __CYCLES__
+#include "cycles.h"
+#include "global.h"
+#include "gpu.h"
+#include "mmu.h"
+#include "serial.h"
+#include "sound.h"
+#include "timer.h"
 
-#include "subsystem/gameboy/globals.h"
-#include "subsystem/gameboy/gpu_hdr.h"
-#include "subsystem/gameboy/serial_hdr.h"
-#include "subsystem/gameboy/timer_hdr.h"
-
+#include <errno.h>
+#include <semaphore.h>
+#include <strings.h>
+#include <time.h>
 #include <sys/time.h>
+#include <unistd.h>
 
-/* timer */
+/* timer stuff */
 struct itimerspec cycles_timer;
 timer_t           cycles_timer_id = 0;
 sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
+
+/* ticks counter */
+uint32_t          cycles_cnt;
+
+/* CPU clock */
+uint32_t          cycles_clock;
 
 #define CYCLES_PAUSES 128
 
@@ -41,27 +52,25 @@ void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
 
 
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
-void cycles_step(uint8_t s)
+void cycles_step()
 {
-    float viggola, viggola2;
+    cycles_cnt += 4;
 
-    cycles_cnt += s;
-
-    if (cycles_cnt % cycles_clock == 0)
+/*    if (cycles_cnt % cycles_clock == 0)
     {
+        struct timeval start;
+        gettimeofday(&start, NULL);
 
-        for (int i=1; i<1000000; i++)
-            viggola = viggola2 * (viggola2 + viggola);
-            
-        printf("PAUSO\n");
-    }
+        printf("YEPA YEPA %d.%d\n", start.tv_sec, start.tv_usec); 
+    } */
 
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
-    if (cycles_cnt % (cycles_clock / CYCLES_PAUSES) == 0)
+//    if (cycles_cnt % (cycles_clock / CYCLES_PAUSES) == 0)
+    if ((cycles_cnt & 0x7FFF) == 0)
     {
         int res = 0;
 
-        while (global_benchmark == 0)
+        while (1)
         {
             res = sem_wait(&cycles_sem);
 
@@ -76,27 +85,36 @@ void cycles_step(uint8_t s)
     }
 
     /* update memory state (for DMA) */
-    // mmu_step(s);
+    mmu_step();
 
     /* update GPU state */
-    gpu_step(s);
+    gpu_step();
 
     /* update timer state */
-    // timer_step(s);
+    timer_step();
 
     /* update serial state */
-    // serial_step(s);
+    serial_step();
 
     /* and finally sound */
-    if (global_benchmark == 0)
-        sound_step(s);
+    sound_step();
 }
 
 char cycles_init()
 {
+    /* init clock and counter */
+    cycles_clock = 4194304;
+    cycles_cnt = 0;
+
     /* init semaphore for cpu clocks sync */
     sem_init(&cycles_sem, 0, 0);
 
+    /* start timer */
+    return cycles_start_timer();
+}
+
+char cycles_start_timer()
+{
     /* prepare timer to emulate video refresh interrupts */
     cycles_sa.sa_flags = SA_SIGINFO;
     cycles_sa.sa_sigaction = cycles_timer_handler;
@@ -112,8 +130,8 @@ char cycles_init()
     timer_create(CLOCK_REALTIME, &cycles_te, &cycles_timer_id);
 
     /* initialize CYCLES_PAUSES hits per second timer */
-    cycles_timer.it_value.tv_sec = 1;
-    cycles_timer.it_value.tv_nsec = 0;
+    cycles_timer.it_value.tv_sec = 0;
+    cycles_timer.it_value.tv_nsec = 1000;
     cycles_timer.it_interval.tv_sec = 0;
     cycles_timer.it_interval.tv_nsec = 1000000000 / CYCLES_PAUSES;
 
@@ -123,19 +141,20 @@ char cycles_init()
     return 0;
 }
 
+void cycles_stop_timer()
+{
+    timer_delete(cycles_timer_id);
+}
+
 /* callback for timer events (64 times per second) */
 void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 {
-    // prot++;
-
     int sval;
 
     sem_getvalue(&cycles_sem, &sval);
 
-    if (sval > 0)
-        printf("SVAL %d\n", sval);
+    if (0 && sval)
+        printf("SVAL: %d\n", sval);
 
     sem_post(&cycles_sem);
 }
-      
-#endif

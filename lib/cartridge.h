@@ -17,14 +17,12 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __CARTRIDGE_HDR__
+#define __CARTRIDGE_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+#include <stdint.h>
+
+/* prototypes */
+char cartridge_load(char *file_nm);
 
 #endif

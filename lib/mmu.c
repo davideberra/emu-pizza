@@ -17,16 +17,18 @@
 
 */
 
-#ifndef __MMU__
-#define __MMU__
+#include "cycles.h"
+#include "global.h"
+#include "gpu.h"
+#include "interrupt.h"
+#include "input.h"
+#include "mmu.h"
+#include "sound.h"
 
-#include "subsystem/gameboy/globals.h"
-#include "subsystem/gameboy/cycles_hdr.h"
-#include "subsystem/gameboy/gpu_hdr.h"
-#include "subsystem/gameboy/interrupts_hdr.h"
-#include "subsystem/gameboy/input_hdr.h"
-#include "subsystem/gameboy/mmu_hdr.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 
 /* GAMEBOY MEMORY AREAS 
 
@@ -71,8 +73,9 @@ uint8_t banking = 0;
 uint16_t mmu_dma_address = 0;
 uint16_t mmu_dma_cycles = 0;
 
+
 /* init (alloc) system state.memory */
-void static mmu_init(uint8_t c, uint8_t rn)
+void mmu_init(uint8_t c, uint8_t rn)
 {
     rom_current_bank = 0x01;
     ram_current_bank = 0x00;
@@ -83,7 +86,7 @@ void static mmu_init(uint8_t c, uint8_t rn)
 }
 
 /* init (alloc) system state.memory */
-void static mmu_init_ram(uint32_t c)
+void mmu_init_ram(uint32_t c)
 {
     ram_sz = c;
 
@@ -93,7 +96,7 @@ void static mmu_init_ram(uint32_t c)
 }
 
 /* update DMA internal state given CPU T-states */
-void mmu_step(uint8_t t)
+void mmu_step()
 {
     if (mmu_dma_address != 0x00)
     {
@@ -111,13 +114,13 @@ void mmu_step(uint8_t t)
 }
 
 /* load data in a certain address */
-void static mmu_load(uint8_t *data, size_t sz, uint16_t a)
+void mmu_load(uint8_t *data, size_t sz, uint16_t a)
 {
     memcpy(&memory[a], data, sz);
 }
 
 /* load full cartridge */
-void static mmu_load_cartridge(uint8_t *data, size_t sz)
+void mmu_load_cartridge(uint8_t *data, size_t sz)
 {
     /* copy max 32k into working memory */
     memcpy(memory, data, 2 << 14);
@@ -127,19 +130,19 @@ void static mmu_load_cartridge(uint8_t *data, size_t sz)
 }
 
 /* move 8 bit from s to d */
-void static inline mmu_move(uint16_t d, uint16_t s)
+void mmu_move(uint16_t d, uint16_t s)
 {
     mmu_write(d, mmu_read(s));
 }
 
 /* return absolute memory address */
-void static inline *mmu_addr(uint16_t a)
+void *mmu_addr(uint16_t a)
 {
     return (void *) &memory[a];
 }
 
 /* read 8 bit data from a memory addres (not affecting cycles) */
-uint8_t static inline mmu_read_no_cyc(uint16_t a)
+uint8_t mmu_read_no_cyc(uint16_t a)
 {
     if (a >= 0xE000 && a <= 0xFDFF)
         return memory[a - 0x2000];
@@ -148,13 +151,10 @@ uint8_t static inline mmu_read_no_cyc(uint16_t a)
 }
 
 /* read 8 bit data from a memory addres */
-uint8_t static inline mmu_read(uint16_t a)
+uint8_t mmu_read(uint16_t a)
 {
     /* always takes 4 cycles */
-    cycles_step(4);
-
-/*    if (a > 0xFF00 && a != 0xFF44)
-        printf("VOGLIO LEGGERE %04x\n", a);*/
+    cycles_step();
 
     /* joypad reading */
     if (a == 0xFF00)
@@ -183,19 +183,16 @@ uint8_t static inline mmu_read(uint16_t a)
 }
 
 /* write 16 bit block on a memory address (no cycles affected) */
-void static inline mmu_write_no_cyc(uint16_t a, uint8_t v)
+void mmu_write_no_cyc(uint16_t a, uint8_t v)
 {
     memory[a] = v;
 }
 
 /* write 16 bit block on a memory address */
-void static inline mmu_write(uint16_t a, uint8_t v)
+void mmu_write(uint16_t a, uint8_t v)
 {
-/*    if (a > 0xFF00)
-        printf("VOGLIO SCRIVERE %02x in %04x\n", v, a); */
-
     /* update cycles AFTER memory set */
-    cycles_step(4);
+    cycles_step();
 
     /* wanna write on ROM? */
     if (a < 0x8000)
@@ -445,24 +442,24 @@ void static inline mmu_write(uint16_t a, uint8_t v)
 }
 
 /* read 16 bit data from a memory addres */
-unsigned int static inline mmu_read_16(uint16_t a)
+unsigned int mmu_read_16(uint16_t a)
 {
     /* 16 bit read = +8 cycles */
-    cycles_step(4);
-    cycles_step(4);
+    cycles_step();
+    cycles_step();
 
     return (memory[a] | (memory[a + 1] << 8));
 }
 
 /* write 16 bit block on a memory address */
-void static inline mmu_write_16(uint16_t a, uint16_t v)
+void mmu_write_16(uint16_t a, uint16_t v)
 {
     memory[a] = (uint8_t) (v & 0x00ff);
     memory[a + 1] = (uint8_t) (v >> 8);
 
     /* 16 bit write = +8 cycles */
-    cycles_step(4);
-    cycles_step(4);
+    cycles_step();
+    cycles_step();
 }
 
 void mmu_save_ram(char *fn)
@@ -504,5 +501,3 @@ void mmu_restore_ram(char *fn)
         }
     } 
 }
-
-#endif

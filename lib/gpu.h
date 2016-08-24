@@ -20,10 +20,17 @@
 #ifndef __GPU_HDR__
 #define __GPU_HDR__
 
+#include <stdint.h>
+
+/* callback function */ 
+typedef void (*gpu_frame_ready_cb_t) ();
+
 /* prototypes */
-void gpu_init();
-void gpu_step(uint8_t t);
-void gpu_toggle(uint8_t state);
+uint32_t *gpu_get_frame_buffer();
+void      gpu_init(gpu_frame_ready_cb_t cb);
+void      gpu_step();
+void      gpu_toggle(uint8_t state);
+void      gpu_write_reg(uint16_t a, uint8_t v);
 
 /* Gameboy LCD Control - R/W accessing 0xFF40 address */
 typedef struct gpu_lcd_ctrl_s
@@ -88,17 +95,5 @@ typedef struct gpu_s
     char      priority[160 * 144];
 
 } gpu_t;
-
-/* global state of GPU */
-gpu_t gpu;
-
-/* 2 bit to 8 bit color lookup */
-static uint32_t gpu_color_lookup[] = { 0x00FFFFFF, 0x00AAAAAA, 0x00555555, 0x00000000 };
-
-/* TEST */
-uint32_t gpu_total_cycles = 0;
-
-/* exported functions */
-void gpu_write_reg(uint16_t a, uint8_t v);
 
 #endif

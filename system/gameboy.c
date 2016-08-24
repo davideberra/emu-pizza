@@ -89,6 +89,18 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     /* init input */
     input_init();
 
+    /* gameboy color? */
+    if (rom[0x143] == 0xC0)
+    {
+        printf("Gameboy Color cartridge\n");
+        global_cgb = 1;
+    }
+    else
+    {
+        printf("Gameboy Classic cartridge\n");
+        global_cgb = 0;
+    }
+
     /* get cartridge infos */
     uint8_t mbc = rom[0x147];
 
@@ -97,11 +109,14 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
     switch (mbc)
     {
         case 0x00: printf("ROM ONLY\n"); break;
-        case 0x01: printf("ROM + MBC1\n"); break;
-        case 0x02: printf("ROM + MBC1 + RAM\n"); break;
-        case 0x03: printf("ROM + MBC1 + RAM + BATTERY\n"); break;
-        case 0x05: printf("ROM + MBC2\n"); break;
-        case 0x06: mmu_init_ram(512); printf("ROM + MBC2 + BATTERY\n"); break;
+        case 0x01: printf("MBC1\n"); break;
+        case 0x02: printf("MBC1 + RAM\n"); break;
+        case 0x03: printf("MBC1 + RAM + BATTERY\n"); break;
+        case 0x05: printf("MBC2\n"); break;
+        case 0x06: mmu_init_ram(512); printf("MBC2 + BATTERY\n"); break;
+        case 0x13: printf("MBC3 + RAM + BATTERY\n"); break;
+        case 0x19: printf("MBC5\n"); break;
+        case 0x1E: printf("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
 
         default: printf("Unknown cartridge type: %02x\n", mbc);
                  return;
@@ -261,7 +276,7 @@ void gameboy_start(char *file_gb, uint8_t *rom, size_t size)
 
     mmu_write_no_cyc(0xFFFE, 0x69);
 
-    state.a = 0x01;
+    state.a = 0x11;
     state.b = 0x00;
     state.c = 0x13;
     state.d = 0x00;

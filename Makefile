@@ -1,20 +1,16 @@
-GTK_CFLAGS=`pkg-config --cflags gtk+-3.0`
-GTK_LIBS=`pkg-config --libs gtk+-3.0`
-CFLAGS=-lpthread -g3 -fomit-frame-pointer
+CFLAGS=-O3 -fomit-frame-pointer
 ifeq ($(OS),Windows_NT)
-    LIBS=-lrt /usr/local/lib/libSDL2.dll.a 
+    LIBS=-lrt `sdl2-config --libs`
     CFLAGS+=-w 
 else
     LIBS=-lrt -lSDL2
 endif
 
-CPU_OBJS=$(patsubst %.c,%.o,$(wildcard cpu/*.c))
-SYSTEM_OBJS=$(patsubst %.c,%.o,$(wildcard system/*.c))
+all: libpizza.a
+	gcc $(CFLAGS) pizza.c -I lib lib/libpizza.a -o emu-pizza $(LIBS)
 
-all:
-	make -C cpu
-	make -C system
-	gcc $(CFLAGS) main.c $(CPU_OBJS) $(SYSTEM_OBJS) -o emu-pizza $(LIBS)
+libpizza.a:
+	make -C lib
 
 clean: 
 	rm -f *.o

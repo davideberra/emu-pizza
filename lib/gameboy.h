@@ -17,14 +17,11 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __GAMEBOY_HDR__
+#define __GAMEBOY_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+/* prototypes */
+void gameboy_init();
+void gameboy_run();
 
 #endif

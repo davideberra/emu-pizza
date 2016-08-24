@@ -17,29 +17,23 @@
 
 */
 
-#ifndef __SOUND__
-#define __SOUND__
+#include "cycles.h"
+#include "global.h"
+#include "gpu.h"
+#include "mmu.h"
+#include "sound.h"
 
 #include <errno.h>
 #include <pthread.h>
-#include <SDL2/SDL.h>
 #include <semaphore.h>
+#include <string.h>
+#include <strings.h>
 #include <sys/time.h>
-#include "subsystem/gameboy/cycles_hdr.h"
-#include "subsystem/gameboy/globals.h"
-#include "subsystem/gameboy/gpu_hdr.h"
-#include "subsystem/gameboy/mmu_hdr.h"
-#include "subsystem/gameboy/sound_hdr.h"
-
-/* SDL structure */
-SDL_AudioSpec desired;
-SDL_AudioSpec obtained;
 
 /* */
-#define SOUND_SAMPLES 2048
-#define SOUND_FREQ    64000
 #define SOUND_BUF_SZ  (SOUND_FREQ * 10)
 
+/* circular buffer */
 int16_t  sound_buf[SOUND_BUF_SZ];
 size_t   sound_buf_rd;
 size_t   sound_buf_wr;
@@ -57,11 +51,13 @@ pthread_mutex_t   sound_mutex;
 char              sound_buffer_full = 0;
 char              sound_buffer_empty = 0;
 
+/* super variable for audio controller */
+sound_t sound;
+
 /* internal prototypes */
 size_t sound_available_samples();
 void   sound_envelope_step();
 void   sound_length_ctrl_step();
-void   sound_read_buffer(void *userdata, uint8_t *stream, int snd_len);
 void   sound_push_sample(int16_t s);
 void   sound_read_samples(int len, int16_t *buf);
 void   sound_rebuild_wave();
@@ -71,26 +67,8 @@ void   sound_write_wave(uint16_t a, uint8_t v);
 
 
 /* init sound states */
-void static sound_init()
+void sound_init()
 {
-    SDL_Init(SDL_INIT_AUDIO);
-    desired.freq = SOUND_FREQ;
-    desired.samples = SOUND_SAMPLES; 
-    desired.format = AUDIO_S16SYS;
-    desired.channels = 2;
-    desired.callback = sound_read_buffer;
-    desired.userdata = NULL;
-
-    /* Open audio */
-    /*if (SDL_OpenAudio(&desired, &obtained) == 0)
-        SDL_PauseAudio(0);
-    else
-    {
-        printf("Cannot open audio device!!\n");
-        global_quit = 1;
-        return;
-    }*/ 
-
     /* point sound structures to their memory areas */
     sound.nr10 = (nr10_t *) mmu_addr(0xFF10);
     sound.nr11 = (nr11_t *) mmu_addr(0xFF11);
@@ -132,47 +110,13 @@ void static sound_init()
 
     /* how many cpu cycles to generate a single sample? */
     sound_sample_cycles = (double) cycles_clock / SOUND_FREQ;
-
-    printf("POINTERZ: %p %p\n", &sound_sample_cycles_cnt, &sound_sample_cycles);
-
 }
 
 /* update sound internal state given CPU T-states */
-void sound_step(uint8_t t)
+void sound_step()
 {
-    double ex = sound_sample_cycles_cnt;
-
-    if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-        printf("SCASSATELLO DA SUBITO\n");
-
     sound_fs_cycles_cnt += 4;
-    sound_sample_cycles_cnt += (double) 4;
-
-    if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-    {
-        printf("SCASASTO - VALEVA %f\n", ex);
-    printf("POINTERZ: %p %p\n", &sound_sample_cycles_cnt, &sound_sample_cycles);
-
-        printf("INDEX %d - WR %d - RD %d\n", sound.channel_three.index, 
-                                             sound_buf_wr, sound_buf_rd);
-        global_quit = 1;
-        return;
-    }
-
-    /* enough cpu cycles to generate a single frame? */
-    if (sound_sample_cycles_cnt >= sound_sample_cycles)
-    {
-        if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-            printf("SCASSATELLO FASE 1\n");
-
-        /* go back */
-        sound_sample_cycles_cnt -= sound_sample_cycles;
-
-        if (!(sound_sample_cycles_cnt == sound_sample_cycles_cnt))
-            printf("SCASSATELLO FASE 2 - %f\n", sound_sample_cycles);
-    }
-  
-    return;
+    sound_sample_cycles_cnt += 4L;
 
     if (sound.channel_three.ram_access > 0)
         sound.channel_three.ram_access -= 4;
@@ -204,7 +148,7 @@ void sound_step(uint8_t t)
     /* update channel one */
     if (sound.channel_one.active)
     {
-        sound.channel_one.duty_cycles_cnt += (double) t;
+        sound.channel_one.duty_cycles_cnt += 4L;
 
         /* enough CPU cycles to trigger a duty step? */
         if (sound.channel_one.duty_cycles_cnt >= 
@@ -227,7 +171,7 @@ void sound_step(uint8_t t)
     /* update channel two */
     if (sound.channel_two.active)
     {
-        sound.channel_two.duty_cycles_cnt += (double) t;
+        sound.channel_two.duty_cycles_cnt += 4L;
 
         /* enough CPU cycles to trigger a duty step? */
         if (sound.channel_two.duty_cycles_cnt >=
@@ -251,7 +195,7 @@ void sound_step(uint8_t t)
     /* update channel three */
     if (sound.channel_three.active)
     {
-        sound.channel_three.cycles_cnt += t;
+        sound.channel_three.cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a wave table step? */
         if (sound.channel_three.cycles_cnt >=
@@ -281,7 +225,7 @@ void sound_step(uint8_t t)
     /* update channel four */
     if (sound.channel_four.active)
     {
-        sound.channel_four.cycles_cnt += t;
+        sound.channel_four.cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a LFSR step? */
         if (sound.channel_four.cycles_cnt >=
@@ -326,14 +270,8 @@ void sound_step(uint8_t t)
         uint8_t channels_left = 0;
         uint8_t channels_right = 0;
 
-        if (sound_sample_cycles_cnt != sound_sample_cycles_cnt)
-            printf("SCASSATELLO FASE 1\n");
-
         /* go back */
         sound_sample_cycles_cnt -= sound_sample_cycles;
-
-        if (sound_sample_cycles_cnt != sound_sample_cycles_cnt)
-            printf("SCASSATELLO FASE 2 - %f\n", sound_sample_cycles);
 
         /* DAC turned off? */
         if (sound.nr30->dac == 0 && 
@@ -341,8 +279,8 @@ void sound_step(uint8_t t)
             sound.channel_two.active == 0 && 
             sound.channel_four.active == 0) 
         { 
-            //sound_push_sample((int16_t) 0x0000);
-           // sound_push_sample((int16_t) 0x0000);
+            sound_push_sample((int16_t) 0x0000);
+            sound_push_sample((int16_t) 0x0000);
             return;
         } 
 
@@ -440,18 +378,18 @@ void sound_step(uint8_t t)
         if (channels_left)
         {
             /* push the average value of all channels samples */
-            //sound_push_sample((int16_t) (sample_left / channels_left));
+            sound_push_sample((int16_t) (sample_left / channels_left));
         }
-     //   else
-            //sound_push_sample((int16_t) 0x0000); 
+        else
+            sound_push_sample((int16_t) 0x0000); 
 
         if (channels_right)
         {
             /* push the average value of all channels samples */
-            //sound_push_sample((int16_t) (sample_right / channels_right));
+            sound_push_sample((int16_t) (sample_right / channels_right));
         }
-     //   else
-     //       sound_push_sample((int16_t) 0x0000);
+        else
+            sound_push_sample((int16_t) 0x0000);
     }
 }
 
@@ -493,8 +431,6 @@ void sound_length_ctrl_step()
 
 void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 {
-    return;
-
     /* requester snd_len is expressed in byte,           */
     /* so divided by to to obtain wanted 16 bits samples */
     sound_read_samples(snd_len / 2, (int16_t *) stream);
@@ -503,8 +439,6 @@ void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
-    return;
-
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
   
@@ -772,6 +706,8 @@ void sound_envelope_step()
             sound.channel_four.envelope_cnt = 0;
         }
     }
+
+
 }
 
 uint8_t sound_read_reg(uint16_t a, uint8_t v)
@@ -876,8 +812,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
     /* confirm write on memory */
     *((uint8_t *) mmu_addr(a)) = v;
-
-    return;
 
     switch (a)
     {
@@ -1429,5 +1363,3 @@ void sound_rebuild_wave()
 void sound_term()
 {
 }
-
-#endif 

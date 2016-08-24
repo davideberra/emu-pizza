@@ -17,14 +17,37 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __TIMER_HDR__
+#define __TIMER_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+#include <stdint.h>
+
+/* prototypes */
+void timer_init();
+void timer_step();
+
+/* Gameboy Timer status */
+typedef struct gameboy_timer_s
+{
+    /* divider - 0xFF04 */
+    uint8_t *div;
+
+    /* counter - 0xFF05 */
+    uint8_t *cnt;
+
+    /* modulo  - 0xFF06 */
+    uint8_t *mod;
+
+    /* control - 0xFF07 */
+    uint8_t *ctrl;
+
+    /* current value    */
+    uint32_t sub;
+    uint32_t div_sub;
+
+} gameboy_timer_t;
+
+/* global status of timer */
+gameboy_timer_t timer;
 
 #endif

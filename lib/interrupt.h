@@ -17,14 +17,19 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __INTERRUPTS_HDR__
+#define __INTERRUPTS_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+#include <stdint.h>
+
+typedef struct interrupts_flags_s
+{ 
+    uint8_t lcd_vblank:1;
+    uint8_t lcd_ctrl:1;
+    uint8_t timer:1;
+    uint8_t serial_io:1;
+    uint8_t pins1013:1;
+    uint8_t spare:3;
+} interrupts_flags_t;
 
 #endif

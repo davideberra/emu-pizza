@@ -17,14 +17,17 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __GLOBAL__
+#define __GLOBAL__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+extern char global_quit;
+extern char global_pause;
+extern char global_window;
+extern char global_debug;
+extern char global_cgb;
+extern char global_double_speed;
+
+/* prototypes */
+void global_init();
 
 #endif

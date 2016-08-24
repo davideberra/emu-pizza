@@ -17,14 +17,20 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __SERIAL_HDR__
+#define __SERIAL_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+#include <stdint.h>
+
+void serial_init();
+void serial_step();
+
+typedef struct serial_ctrl_s
+{ 
+    uint8_t clock:1;
+    uint8_t speed:1;
+    uint8_t spare:5;
+    uint8_t transfer_start:1;
+} serial_ctrl_t;
 
 #endif

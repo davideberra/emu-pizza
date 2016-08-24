@@ -17,14 +17,18 @@
 
 */
 
-#ifndef __GLOBALS__
-#define __GLOBALS__
+#ifndef __CYCLES_HDR__
+#define __CYCLES_HDR__
 
-static char global_quit = 0;
-static char global_window = 1;
-static char global_debug = 0;
-static char global_benchmark = 0;
-static char global_cgb = 0;
-static char global_double_speed = 0;
+#include <stdint.h>
+
+/* global */
+extern uint32_t          cycles_clock;
+
+/* prototypes */
+char cycles_init();
+char cycles_start_timer();
+void cycles_step();
+void cycles_stop_timer();
 
 #endif

@@ -17,17 +17,18 @@
 
 */
 
-#ifndef __GPU__
-#define __GPU__
+#include "global.h"
+#include "interrupt.h"
+#include "mmu.h"
+#include "gpu.h"
 
 #include <errno.h>
-#include <SDL2/SDL.h>
 #include <semaphore.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 #include <time.h>
-#include "subsystem/gameboy/globals.h"
-#include "subsystem/gameboy/mmu_hdr.h"
-#include "subsystem/gameboy/interrupts_hdr.h"
 
 /* Gameboy OAM 4 bytes data */
 typedef struct gpu_oam_s
@@ -51,12 +52,6 @@ typedef struct oam_list_s
     struct oam_list_s *next;
 } oam_list_t;
 
-/* window we'll be rendering to */
-static SDL_Window *window = NULL;
-
-/* surface contained by the window */
-static SDL_Surface *screenSurface = NULL;
-
 /* pointer to interrupt flags (handy) */
 interrupts_flags_t *gpu_if;
 
@@ -66,29 +61,29 @@ void gpu_draw_sprite_line(gpu_oam_t *oam,
                           uint8_t line);
 
 /* as the name says.... */
-int gpu_magnify_rate = 1;
+float gpu_magnify_rate = 1;
+
+/* total cycles */
+uint32_t gpu_total_cycles;
+
+/* 2 bit to 8 bit color lookup */
+static uint32_t gpu_color_lookup[] = { 0x00FFFFFF, 0x00AAAAAA, 0x00555555, 0x00000000 };
+
+/* function to call when frame is ready */
+gpu_frame_ready_cb_t gpu_frame_ready_cb;
+
+/* scaled output frame buffer */
+uint32_t *out_frame_buffer;
+
+/* global state of GPU */
+gpu_t gpu;
 
 
 /* init GPU states */
-void gpu_init()
+void gpu_init(gpu_frame_ready_cb_t cb)
 {
+    /* reset gpu structure */
     bzero(&gpu, sizeof(gpu_t));
-
-    /* Initialize SDL */
-    if (SDL_Init(SDL_INIT_VIDEO) < 0 )
-    {
-        printf( "SDL could not initialize! SDL_Error: %s\n", SDL_GetError() );
-        return;
-    }
-
-    window = SDL_CreateWindow("Emu Pizza - Gameboy",
-                              SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED,
-                              160 * gpu_magnify_rate, 144 * gpu_magnify_rate,
-                              SDL_WINDOW_SHOWN);
-
-    /* get window surface */
-    screenSurface = SDL_GetWindowSurface(window);
 
     /* make gpu field points to the related memory area */
     gpu.lcd_ctrl   = mmu_addr(0xFF40);
@@ -100,10 +95,13 @@ void gpu_init()
     gpu.ly         = mmu_addr(0xFF44);
     gpu.lyc        = mmu_addr(0xFF45);
     gpu_if         = mmu_addr(0xFF0F);
-    
-    /* start with state 0x02 */
-//    (*gpu.lcd_status).mode = 0x02;
+   
+    /* init counters */ 
     gpu.clocks = 0;
+    gpu_total_cycles = 0;
+
+    /* set callback */
+    gpu_frame_ready_cb = cb;
 }
 
 /* turn on/off lcd */
@@ -136,39 +134,46 @@ void gpu_toggle(uint8_t state)
 /* push frame on screen */
 void gpu_draw_frame()
 {
-    int x,y,p;
-    uint32_t *pixel = screenSurface->pixels;
+/*    int x,y;
+    float px, py;
   
-    /* magnify! */
     if (gpu_magnify_rate > 1)
     {
         uint32_t *line = malloc(sizeof(uint32_t) * 160 * gpu_magnify_rate);
 
+        py = 0;
+
         for (y=0; y<144; y++)
         {
+            px = 0;
+
             for (x=0; x<160; x++)
             { 
-                for (p=0; p<gpu_magnify_rate; p++)
-                    line[p + (x * gpu_magnify_rate)] = 
+                for (; px<gpu_magnify_rate; px++)
+                    line[(int) px + (int) (x * gpu_magnify_rate)] = 
                         gpu.frame_buffer[x + (y * 160)];
+
+                px -= gpu_magnify_rate;
             }
 
-            for (p=0; p<gpu_magnify_rate; p++)
-                memcpy(&pixel[((y * gpu_magnify_rate) + p) * 
-                           160 * gpu_magnify_rate], 
+            for (; py<gpu_magnify_rate; py++)
+                memcpy(&out_frame_buffer[(int) ((int) ((y * gpu_magnify_rate) + 
+                           (int) py) * 
+                           160 * gpu_magnify_rate)], 
                        line, sizeof(uint32_t) * 160 * gpu_magnify_rate);
+
+            py -= gpu_magnify_rate;
         }  
     
         free(line);
     }
     else
-    {
-        /* just copy GPU frame buffer into SDL frame buffer */
-        memcpy(pixel, gpu.frame_buffer, 160 * 144 * sizeof(uint32_t));
-    }
+        memcpy(out_frame_buffer, gpu.frame_buffer, 
+               160 * 144 * sizeof(uint32_t)); */
 
-    /* Update the surface */
-    SDL_UpdateWindowSurface(window);
+    /* call the callback */
+    if (gpu_frame_ready_cb)
+        (*gpu_frame_ready_cb) ();
 
     /* reset priority matrix */
     bzero(gpu.priority, 160 * 144);
@@ -176,7 +181,11 @@ void gpu_draw_frame()
     return;
 }
 
-
+/* get pointer to frame buffer */
+uint32_t *gpu_get_frame_buffer()
+{
+    return gpu.frame_buffer; 
+}
 
 /* draw a single line */
 void gpu_draw_line(uint8_t line)
@@ -189,7 +198,7 @@ void gpu_draw_line(uint8_t line)
     /* avoid mess */
     if (line > 144)
         return;
- 
+
     /* gotta show BG */
     if ((*gpu.lcd_ctrl).bg)
     {
@@ -519,58 +528,17 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size,
     }
 }
 
-/* update GPU frame buffer */
+/* update GPU frame buffer with window (if wanted) */
 void gpu_update_frame_buffer()
 {
-    int x, y, z, xmin, xmax, ymin, ymax;
-    uint8_t *tiles_map;
-    uint16_t tiles_addr, tile_n; 
-    uint8_t tile_pos_x, tile_pos_y;
-
-    /* gotta show BG */
-    if (0 && (*gpu.lcd_ctrl).bg)
-    {
-        /* get tile map offset */
-        tiles_map = mmu_addr((*gpu.lcd_ctrl).bg_tiles_map ? 0x9C00 : 0x9800);
-
-        if ((*gpu.lcd_ctrl).bg_tiles)
-             tiles_addr = 0x8000;
-        else
-             tiles_addr = 0x9000;
-
-        /* calc tiles involved */
-        xmin = *(gpu.scroll_x) / 8;
-        xmax = xmin + 21;
-
-        ymin = *(gpu.scroll_y) / 8;
-        ymax = ymin + 19;
-
-        for (y=ymin; y<ymax; y++)
-        {
-            for (x=xmin; x<xmax; x++)
-            {
-                /* calc the linear index of the tile */
-                z = (y % 32) * 32 + (x % 32);
-
-                /* calc coordinates from the index of the tile */
-                tile_pos_x = (z % 32) * 8;
-                tile_pos_y = (z / 32) * 8;
-
-                /* calc tile number */
-                if ((*gpu.lcd_ctrl).bg_tiles == 0)
-                     tile_n = (int8_t) tiles_map[z]; 
-                else
-                     tile_n = (tiles_map[z] & 0x00ff);
-
-                gpu_draw_tile(tiles_addr, tile_n, 
-                              (uint8_t) tile_pos_x, (uint8_t) tile_pos_y, 
-                              gpu.bg_palette, 1);
-            }
-        }
-    }
-
+    /* wanna show window? */
     if (global_window && (*gpu.lcd_ctrl).window)
     {
+        int z;
+        uint8_t *tiles_map;
+        uint16_t tiles_addr, tile_n; 
+        uint8_t tile_pos_x, tile_pos_y;
+
         /* gotta draw a window? check if it is inside screen coordinates */
         if (*(gpu.window_y) >= 144 ||
             *(gpu.window_x) >= 160)
@@ -593,6 +561,7 @@ void gpu_update_frame_buffer()
             else
                  tile_n = (tiles_map[z] & 0x00ff);
 
+            /* calc tile coordinates on frame buffer */
             tile_pos_x = (z % 32) * 8 + *(gpu.window_x) - 7;
             tile_pos_y = (z / 32) * 8 + *(gpu.window_y);
 
@@ -605,10 +574,7 @@ void gpu_update_frame_buffer()
             if (tile_pos_y >= 144)
                 break;
 
-            /* make it rotate */
-//            if (tile_pos_x > 247)
-//                tile_pos_x -= (256 - 160);
-
+            /* put tile on frame buffer */ 
             gpu_draw_tile(tiles_addr, tile_n, 
                           (uint8_t) tile_pos_x, (uint8_t) tile_pos_y,
                           gpu.bg_palette, 1);
@@ -617,7 +583,7 @@ void gpu_update_frame_buffer()
 }
 
 /* update GPU internal state given CPU T-states */
-void gpu_step(uint8_t t)
+void gpu_step()
 {
     char ly_changed = 0;
     char mode_changed = 0;
@@ -627,7 +593,7 @@ void gpu_step(uint8_t t)
         return;
 
     /* update clock counter */
-    gpu.clocks += t;
+    gpu.clocks += 4;
 
     /* take different action based on current state */
     switch((*gpu.lcd_status).mode)
@@ -841,5 +807,3 @@ void gpu_write_reg(uint16_t a, uint8_t v)
 
     }
 }
-
-#endif 
