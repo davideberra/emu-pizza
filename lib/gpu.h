@@ -26,11 +26,12 @@
 typedef void (*gpu_frame_ready_cb_t) ();
 
 /* prototypes */
-uint32_t *gpu_get_frame_buffer();
+uint16_t *gpu_get_frame_buffer();
 void      gpu_init(gpu_frame_ready_cb_t cb);
 void      gpu_step();
 void      gpu_toggle(uint8_t state);
 void      gpu_write_reg(uint16_t a, uint8_t v);
+uint8_t   gpu_read_reg(uint16_t a);
 
 /* Gameboy LCD Control - R/W accessing 0xFF40 address */
 typedef struct gpu_lcd_ctrl_s
@@ -79,19 +80,26 @@ typedef struct gpu_s
     uint32_t  clocks;
 
     /* BG palette       */
-    uint32_t  bg_palette[4]; 
+    uint16_t  bg_palette[4]; 
 
     /* Obj palette 0/1  */
-    uint32_t  obj_palette_0[4]; 
-    uint32_t  obj_palette_1[4]; 
+    uint16_t  obj_palette_0[4]; 
+    uint16_t  obj_palette_1[4]; 
 
-    /* CGB palette */
-    uint16_t  cgb_palette[0x40];
-    uint8_t   cgb_palette_idx;
-    uint8_t   cgb_palette_autoinc;
+    /* CGB palette for background */
+    uint16_t  cgb_palette_bg_rgb565[0x20];
+    uint16_t  cgb_palette_bg[0x20];
+    uint8_t   cgb_palette_bg_idx;
+    uint8_t   cgb_palette_bg_autoinc;
+
+    /* CGB palette for sprites */
+    uint16_t  cgb_palette_oam_rgb565[0x20];
+    uint16_t  cgb_palette_oam[0x20];
+    uint8_t   cgb_palette_oam_idx;
+    uint8_t   cgb_palette_oam_autoinc;
 
     /* frame buffer     */
-    uint32_t  frame_buffer[160 * 144];
+    uint16_t  frame_buffer[160 * 144];
     char      priority[160 * 144];
 
 } gpu_t;

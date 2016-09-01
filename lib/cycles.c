@@ -27,6 +27,7 @@
 
 #include <errno.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <strings.h>
 #include <time.h>
 #include <sys/time.h>
@@ -38,6 +39,9 @@ timer_t           cycles_timer_id = 0;
 sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
+
+/* am i init'ed? */
+char              cycles_inited = 0;
 
 /* ticks counter */
 uint32_t          cycles_cnt;
@@ -56,16 +60,7 @@ void cycles_step()
 {
     cycles_cnt += 4;
 
-/*    if (cycles_cnt % cycles_clock == 0)
-    {
-        struct timeval start;
-        gettimeofday(&start, NULL);
-
-        printf("YEPA YEPA %d.%d\n", start.tv_sec, start.tv_usec); 
-    } */
-
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
-//    if (cycles_cnt % (cycles_clock / CYCLES_PAUSES) == 0)
     if ((cycles_cnt & 0x7FFF) == 0)
     {
         int res = 0;
@@ -102,6 +97,8 @@ void cycles_step()
 
 char cycles_init()
 {
+    cycles_inited = 1;
+
     /* init clock and counter */
     cycles_clock = 4194304;
     cycles_cnt = 0;
@@ -115,10 +112,14 @@ char cycles_init()
 
 char cycles_start_timer()
 {
+    if (cycles_inited == 0) 
+        return 0;
+
     /* prepare timer to emulate video refresh interrupts */
     cycles_sa.sa_flags = SA_SIGINFO;
     cycles_sa.sa_sigaction = cycles_timer_handler;
     sigemptyset(&cycles_sa.sa_mask);
+    // bzero(&cycles_sa.sa_mask, sizeof(sig_t));
     if (sigaction(SIGRTMIN, &cycles_sa, NULL) == -1)
         return 1;
     bzero(&cycles_te, sizeof(struct sigevent));
@@ -130,7 +131,7 @@ char cycles_start_timer()
     timer_create(CLOCK_REALTIME, &cycles_te, &cycles_timer_id);
 
     /* initialize CYCLES_PAUSES hits per second timer */
-    cycles_timer.it_value.tv_sec = 0;
+    cycles_timer.it_value.tv_sec = 1;
     cycles_timer.it_value.tv_nsec = 1000;
     cycles_timer.it_interval.tv_sec = 0;
     cycles_timer.it_interval.tv_nsec = 1000000000 / CYCLES_PAUSES;
@@ -143,6 +144,9 @@ char cycles_start_timer()
 
 void cycles_stop_timer()
 {
+    if (cycles_inited == 0)
+        return;
+
     timer_delete(cycles_timer_id);
 }
 
@@ -153,8 +157,23 @@ void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 
     sem_getvalue(&cycles_sem, &sval);
 
-    if (0 && sval)
+    if (sval)
         printf("SVAL: %d\n", sval);
 
     sem_post(&cycles_sem);
+}
+
+void cycles_term()
+{
+    if (cycles_inited == 0)
+        return;
+
+    /* stop timer */
+    timer_delete(cycles_timer_id);
+
+    /* post it in case it was stuck */
+    sem_post(&cycles_sem);
+
+    /* destroy semaphore */
+    sem_destroy(&cycles_sem);
 }

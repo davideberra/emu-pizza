@@ -28,14 +28,14 @@
 #include "sound.h"
 
 /* proto */
-void poccottio();
+void cb();
 void *start_thread(void *args);
 
 /* frame buffer pointer */
-uint32_t *fb;
+uint16_t *fb;
 
 /* magnify rate */
-float magnify_rate = 4.5f;
+float magnify_rate = 3.f;
 
 /* emulator thread */
 pthread_t thread;
@@ -43,6 +43,7 @@ pthread_t thread;
 /* SDL video stuff */
 SDL_Window *window;
 SDL_Surface *screenSurface;
+SDL_Surface *windowSurface;
 
 
 int main(int argc, char **argv)
@@ -52,14 +53,14 @@ int main(int argc, char **argv)
     SDL_AudioSpec desired;
     SDL_AudioSpec obtained;
 
+    /* init global variables */
+    global_init();
+
     /* first, load cartridge */
     char ret = cartridge_load(argv[1]);
 
     if (ret != 0)
-    {
-        printf("ERRORAO\n");
         return 1;
-    } 
 
     /* initialize SDL video */
     if (SDL_Init(SDL_INIT_VIDEO) < 0 )
@@ -75,7 +76,10 @@ int main(int argc, char **argv)
                               SDL_WINDOW_SHOWN);
 
     /* get window surface */
-    screenSurface = SDL_GetWindowSurface(window);
+    windowSurface = SDL_GetWindowSurface(window);
+    screenSurface = SDL_ConvertSurfaceFormat(windowSurface,
+                                             SDL_PIXELFORMAT_RGB565, 
+                                             0);
 
     /* initialize SDL audio */
     SDL_Init(SDL_INIT_AUDIO);
@@ -96,7 +100,7 @@ int main(int argc, char **argv)
     }
 
     /* init GPU */
-    gpu_init(&poccottio);
+    gpu_init(&cb);
 
     /* get frame buffer reference */
     fb = gpu_get_frame_buffer();    
@@ -131,7 +135,10 @@ int main(int argc, char **argv)
                     case (SDLK_w): global_window ^= 0x01; break;
                     case (SDLK_p): gameboy_set_pause(global_pause ^ 0x01); 
                                    break;
+                    case (SDLK_SPACE):  input_set_key_select(1); break;
                     case (SDLK_RETURN): input_set_key_start(1); break;
+                    case (SDLK_UP):     input_set_key_up(1);    break;
+                    case (SDLK_DOWN):   input_set_key_down(1);  break;
                     case (SDLK_RIGHT):  input_set_key_right(1); break;
                     case (SDLK_LEFT):   input_set_key_left(1);  break;
                     case (SDLK_z):      input_set_key_b(1);     break;
@@ -142,11 +149,14 @@ int main(int argc, char **argv)
             case SDL_KEYUP:
                 switch (e.key.keysym.sym)
                 {
-                    case (SDLK_RETURN): input_set_key_start(0); break;
-                    case (SDLK_RIGHT):  input_set_key_right(0); break;
-                    case (SDLK_LEFT):   input_set_key_left(0);  break;
-                    case (SDLK_z):      input_set_key_b(0);     break;
-                    case (SDLK_x):      input_set_key_a(0);     break;
+                    case (SDLK_SPACE):  input_set_key_select(0); break;
+                    case (SDLK_RETURN): input_set_key_start(0);  break;
+                    case (SDLK_UP):     input_set_key_up(0);     break;
+                    case (SDLK_DOWN):   input_set_key_down(0);   break;
+                    case (SDLK_RIGHT):  input_set_key_right(0);  break;
+                    case (SDLK_LEFT):   input_set_key_left(0);   break;
+                    case (SDLK_z):      input_set_key_b(0);      break;
+                    case (SDLK_x):      input_set_key_a(0);      break;
                 }
                 break;
         }
@@ -167,9 +177,9 @@ void *start_thread(void *args)
     global_quit = 1;
 }
 
-void poccottio()
+void cb()
 {
-    uint32_t *pixel = screenSurface->pixels;
+    uint16_t *pixel = screenSurface->pixels;
 
     /* magnify! */
     if (magnify_rate > 1)
@@ -177,7 +187,7 @@ void poccottio()
         int x,y,p;
         float px, py = 0;
 
-        uint32_t *line = malloc(sizeof(uint32_t) * 160 * magnify_rate);
+        uint16_t *line = malloc(sizeof(uint16_t) * 160 * magnify_rate);
 
         for (y=0; y<144; y++)
         {
@@ -195,7 +205,7 @@ void poccottio()
             for (; py<magnify_rate; py++)
                 memcpy(&pixel[(int) (((y * magnify_rate) + py) *
                            160 * magnify_rate)],
-                       line, sizeof(uint32_t) * 160 * magnify_rate);
+                       line, sizeof(uint16_t) * 160 * magnify_rate);
 
             py -= magnify_rate;
         }
@@ -205,9 +215,15 @@ void poccottio()
     else
     {
         /* just copy GPU frame buffer into SDL frame buffer */
-        memcpy(pixel, fb, 160 * 144 * sizeof(uint32_t));
+        memcpy(pixel, fb, 160 * 144 * sizeof(uint16_t));
     }
 
+    SDL_ConvertPixels(screenSurface->w, screenSurface->h,
+                      screenSurface->format->format,
+                      screenSurface->pixels, screenSurface->pitch,
+                      SDL_PIXELFORMAT_ARGB8888,
+                      windowSurface->pixels, windowSurface->pitch);
+                       
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
 }

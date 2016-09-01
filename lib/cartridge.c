@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include "global.h"
 #include "mmu.h"
@@ -33,21 +34,20 @@ uint8_t rom[2 << 24];
 /* 1: Can't open/read file */
 /* 2: Unknown cartridge    */
 
-char cartridge_load(char *file_gb)
-{
-    char      file_sav[1024];
-    FILE     *fp;
-    int       i;
- 
+char cartridge_load(char *file_gb) {
+    char file_sav[1024];
+    FILE *fp;
+    int i;
+
     /* open ROM file */
-    if ((fp = fopen(file_gb, "r")) == NULL)
+    if ((fp = fopen(file_gb, "r")) == NULL) 
         return 1;
 
     /* read all the content into rom buffer */
     size_t sz = fread(rom, 1, (2 << 24), fp);
 
     /* check for errors   */
-    if (sz < 1)
+    if (sz < 1) 
         return 1;
 
     /* close */
@@ -78,8 +78,11 @@ char cartridge_load(char *file_gb)
         case 0x03: printf("MBC1 + RAM + BATTERY\n"); break;
         case 0x05: printf("MBC2\n"); break;
         case 0x06: mmu_init_ram(512); printf("MBC2 + BATTERY\n"); break;
+        case 0x10: printf("MBC3 + TIMER + RAM + BATTERY\n"); break;
         case 0x13: printf("MBC3 + RAM + BATTERY\n"); break;
         case 0x19: printf("MBC5\n"); break;
+        case 0x1B: printf("MBC5 + RAM + BATTERY\n"); break;
+        case 0x1C: printf("MBC5 + RUMBLE\n"); break;
         case 0x1E: printf("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
 
         default: printf("Unknown cartridge type: %02x\n", mbc);
@@ -108,6 +111,9 @@ char cartridge_load(char *file_gb)
         case 0x05: printf("64 banks\n"); break;
         case 0x06: printf("128 banks\n"); break;
         case 0x07: printf("256 banks\n"); break;
+        case 0x52: printf("72 banks\n"); break;
+        case 0x53: printf("80 banks\n"); break;
+        case 0x54: printf("96 banks\n"); break;
     }
 
     /* init MMU */
@@ -122,7 +128,19 @@ char cartridge_load(char *file_gb)
     {
         case 0x00: printf("NO RAM\n"); break;
         case 0x01: mmu_init_ram(1 << 11); printf("2 kB\n"); break;
-        case 0x02: mmu_init_ram(1 << 13); printf("8 kB\n"); break;
+        case 0x02: 
+                   /* MBC5 got bigger values */
+                   if (mbc >= 0x19 && mbc <= 0x1E)
+                   {
+                       mmu_init_ram(1 << 16); 
+                       printf("64 kB\n"); 
+                   }
+                   else
+                   {
+                       mmu_init_ram(1 << 13); 
+                       printf("8 kB\n"); 
+                   }
+                   break;
         case 0x03: mmu_init_ram(1 << 15); printf("32 kB\n"); break;
         case 0x04: printf("128 kB\n"); break;
         case 0x05: printf("64 kB\n"); break;

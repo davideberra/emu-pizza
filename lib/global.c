@@ -34,4 +34,5 @@ void global_init()
     global_debug = 0;
     global_cgb = 0;
     global_double_speed = 0;
+   //  global_started = 0;
 }

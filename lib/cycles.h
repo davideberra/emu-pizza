@@ -30,5 +30,6 @@ char cycles_init();
 char cycles_start_timer();
 void cycles_step();
 void cycles_stop_timer();
+void cycles_term();
 
 #endif

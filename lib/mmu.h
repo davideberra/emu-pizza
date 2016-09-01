@@ -25,6 +25,8 @@
 
 /* functions prototypes */
 void         *mmu_addr(uint16_t a);
+void         *mmu_addr_vram0();
+void         *mmu_addr_vram1();
 void          mmu_init(uint8_t c, uint8_t rn);
 void          mmu_init_ram(uint32_t c);
 void          mmu_load(uint8_t *data, size_t sz, uint16_t a);
@@ -39,5 +41,6 @@ unsigned int  mmu_read_16(uint16_t a);
 void          mmu_write_16(uint16_t a, uint16_t v);
 void          mmu_save_ram(char *fn);
 void          mmu_restore_ram(char *fn);
+void          mmu_term();
 
 #endif

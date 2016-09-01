@@ -42,7 +42,7 @@ sem_t gameboy_sem;
 void gameboy_init()
 {
     /* init global values */
-    global_init(); 
+    // global_init(); 
 
     /* init z80 */
     z80_init(); 
@@ -111,7 +111,7 @@ void gameboy_init()
     state.l = 0x4d;
     state.pc = 0x0100;
     state.sp = 0xFFFE;
-    *state.f = 0xB0; 
+    *state.f = 0xB0;
 
     /* init semaphore for pauses */
     sem_init(&gameboy_sem, 0, 0);
@@ -121,16 +121,19 @@ void gameboy_init()
 
 void gameboy_set_pause(char pause)
 {
+    if (pause == global_pause)
+        return;
+
     global_pause = pause;
 
     if (pause)
     {
         /* stop timer */
-        cycles_stop_timer(); 
+        cycles_stop_timer();
 
     }
     else
-    { 
+    {
         /* restart timer */
         cycles_start_timer();
  
@@ -155,6 +158,9 @@ void gameboy_run()
     int_e = mmu_addr(0xFFFF);
     int_f = mmu_addr(0xFF0F);
 
+    /* set it was started */
+    // global_started = 1;
+
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
     /* 1) execute instruction 2) update cycles counter 3) check interrupts */
@@ -162,7 +168,7 @@ void gameboy_run()
     while (!global_quit)
     {
         /* pause? */
-        while (global_pause)
+        while (global_pause) 
             sem_wait(&gameboy_sem);
 
         /* get op */
@@ -178,8 +184,10 @@ void gameboy_run()
                                    mmu_read_no_cyc(state.sp), 
                                    mmu_read_no_cyc(state.sp + 1));
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc, 
-                                                          *state.de, *state.hl);
+            printf("A: %02x BC: %04x DE: %04x HL: %04x FF41: %02x ", state.a, *state.bc, 
+                                                          *state.de, *state.hl, mmu_read_no_cyc(0xff41));
+
+            printf("IF: %02x IE: %02x ENAB %d\n", *int_f, *int_e, state.int_enable);
         }
 
         /* execute instruction by the GB Z80 version */
@@ -260,6 +268,22 @@ void gameboy_run()
 
     /* terminate all the stuff */
     sound_term();
+    mmu_term();
  
     return; 
+}
+
+void gameboy_stop() 
+{
+    global_quit = 1;
+
+    /* wake up */
+    if (global_pause) 
+    {
+        global_pause = 0;
+        sem_post(&gameboy_sem);
+    }
+
+    /* shutdown semaphore limitator */
+    cycles_term();
 }

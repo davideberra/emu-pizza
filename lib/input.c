@@ -70,12 +70,12 @@ uint8_t input_get_keys(uint8_t line)
 
     if ((line & 0x30) == 0x10)
     {
-        /* B pressed?      */
-        if (input_key_b)
-            v ^= 0x01;
-
         /* A pressed?      */
         if (input_key_a)
+            v ^= 0x01;
+
+        /* B pressed?      */
+        if (input_key_b)
             v ^= 0x02;
 
         /* SELECT pressed? */

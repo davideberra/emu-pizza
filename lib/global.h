@@ -25,6 +25,7 @@ extern char global_pause;
 extern char global_window;
 extern char global_debug;
 extern char global_cgb;
+// extern char global_started;
 extern char global_double_speed;
 
 /* prototypes */
