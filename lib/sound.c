@@ -54,6 +54,10 @@ char              sound_buffer_empty = 0;
 /* super variable for audio controller */
 sound_t sound;
 
+/* steps length */
+int    sound_step_int;
+double sound_step_double;
+
 /* internal prototypes */
 size_t sound_available_samples();
 void   sound_envelope_step();
@@ -98,6 +102,10 @@ void sound_init()
 
     sound.wave_table = mmu_addr(0xFF30);
 
+    /* steps length */
+    sound_step_int = 4;
+    sound_step_double = 4L;
+
     /* available samples */
     sound_buf_available = 0;
 
@@ -112,14 +120,24 @@ void sound_init()
     sound_sample_cycles = (double) cycles_clock / SOUND_FREQ;
 }
 
+void sound_set_speed(char dbl)
+{
+    if (dbl)
+        sound_step_int = 2;
+    else
+        sound_step_int = 4;
+
+    sound_step_double = (double) sound_step_int;
+}
+
 /* update sound internal state given CPU T-states */
 void sound_step()
 {
-    sound_fs_cycles_cnt += 4;
-    sound_sample_cycles_cnt += 4L;
+    sound_fs_cycles_cnt += sound_step_int;
+    sound_sample_cycles_cnt += sound_step_double;
 
     if (sound.channel_three.ram_access > 0)
-        sound.channel_three.ram_access -= 4;
+        sound.channel_three.ram_access -= sound_step_int;
 
     /* frame sequencer runs at 512 hz - 8192 ticks at standard CPU speed */
     if (sound_fs_cycles_cnt == sound_fs_cycles)

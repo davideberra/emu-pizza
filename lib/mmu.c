@@ -165,14 +165,32 @@ void mmu_step()
                 /* update current line */
                 mmu.hdma_current_line = memory[0xFF44];
 
-                /* move! */
-                memcpy(&memory[mmu.hdma_dst_address + 
-                               mmu.hdma_to_transfer - 0x10],
-                       &memory[mmu.hdma_src_address +
-                               mmu.hdma_to_transfer - 0x10], 0x10);
+                /* copy right now */
+/*                if (mmu.vram_idx)
+                    memcpy(mmu_addr_vram1() + mmu.hdma_dst_address + 
+                                   mmu.hdma_to_transfer - 0x10 - 0x8000,
+                           &memory[mmu.hdma_src_address +
+                                   mmu.hdma_to_transfer - 0x10], 0x10);
+                else
+                    memcpy(mmu_addr_vram0() + mmu.hdma_dst_address + 
+                                   mmu.hdma_to_transfer - 0x10 - 0x8000,
+                           &memory[mmu.hdma_src_address +
+                                   mmu.hdma_to_transfer - 0x10], 0x10); */
+
+                /* copy 0x10 bytes */
+                if (mmu.vram_idx)
+                    memcpy(mmu_addr_vram1() + mmu.hdma_dst_address - 0x8000,
+                           &memory[mmu.hdma_src_address], 0x10);
+                else
+                    memcpy(mmu_addr_vram0() + mmu.hdma_dst_address - 0x8000,
+                           &memory[mmu.hdma_src_address], 0x10);
 
                 /* decrease bytes to transfer */
                 mmu.hdma_to_transfer -= 0x10;
+
+                /* increase pointers */
+                mmu.hdma_dst_address += 0x10;
+                mmu.hdma_src_address += 0x10;
             }
         }
     }
@@ -251,13 +269,17 @@ uint8_t mmu_read(uint16_t a)
         switch (a)
         {
             case 0xFF55:
+
                 /* HDMA result */
                 if (mmu.hdma_to_transfer)
                     return 0x00;
                 else
                     return 0xFF;
 
+            case 0xFF68:
             case 0xFF69:
+            case 0xFF6A:
+            case 0xFF6B:
                 return gpu_read_reg(a);
 
         }
@@ -326,12 +348,19 @@ void mmu_write(uint16_t a, uint8_t v)
                    &mmu.wram[0x1000 * mmu.wram_current_bank],
                    0x1000);
 
+            /* save current bank */
+            memory[0xFF70] = new;
+
             return;
         }
 
         if (a == 0xFF4F)
         {
+            /* extract VRAM index from last bit */            
             mmu.vram_idx = (v & 0x01);
+
+            /* save current VRAM bank */
+            memory[0xFF4F] = mmu.vram_idx;
 
             return;
         }
@@ -456,8 +485,11 @@ void mmu_write(uint16_t a, uint8_t v)
 
             /* MBC5 */
             case 0x19:
+            case 0x1A:
             case 0x1B:
             case 0x1C:
+            case 0x1D:
+            case 0x1E:
 
                 if (a >= 0x0000 && a <= 0x1FFF)
                 {
@@ -476,6 +508,9 @@ void mmu_write(uint16_t a, uint8_t v)
                                &ram[0x2000 * ram_current_bank],
                                0x2000);
 
+                        /* set external RAM eanbled flag */
+                        mmu.ram_external_enabled = 1;
+
                         return;
                     }
 
@@ -493,9 +528,9 @@ void mmu_write(uint16_t a, uint8_t v)
                         memcpy(&memory[0xA000],
                                mmu.ram_internal, 0x2000);
 
-
+                        /* clear external RAM eanbled flag */
+                        mmu.ram_external_enabled = 0;
                     }
-
                 }
                 if (a >= 0x2000 && a <= 0x2FFF)
                 {
@@ -612,7 +647,9 @@ void mmu_write(uint16_t a, uint8_t v)
                         global_double_speed ^= 0x01;
 
                         /* update new clock */ 
-                        cycles_clock = 4194304 << global_double_speed;
+                        // cycles_clock = 4194304 << global_double_speed;
+                        cycles_set_speed(1);
+                        sound_set_speed(1);
 
                         /* save into memory i'm working at double speed */
                         if (global_double_speed)
@@ -623,7 +660,7 @@ void mmu_write(uint16_t a, uint8_t v)
  
                     return;
  
-                case 0xFF51: 
+                case 0xFF52: 
 
                     /* high byte of HDMA source address */
                     mmu.hdma_src_address &= 0xff00;
@@ -633,17 +670,17 @@ void mmu_write(uint16_t a, uint8_t v)
              
                     break;
 
-                case 0xFF52:
+                case 0xFF51:
 
                     /* low byte of HDMA source address */
                     mmu.hdma_src_address &= 0x00ff;
 
                     /* highet 3 bits are ignored (always 100 binary) */
-                    mmu.hdma_src_address |= (v << 8); // ((v & 0x1f) | 0x80) << 8;
+                    mmu.hdma_src_address |= (v << 8); 
 
                     break;
 
-                case 0xFF53:
+                case 0xFF54:
 
                     /* high byte of HDMA source address */
                     mmu.hdma_dst_address &= 0xff00;
@@ -653,7 +690,7 @@ void mmu_write(uint16_t a, uint8_t v)
 
                     break;
 
-                case 0xFF54:
+                case 0xFF53:
 
                     /* low byte of HDMA source address */
                     mmu.hdma_dst_address &= 0x00ff;
@@ -688,7 +725,7 @@ void mmu_write(uint16_t a, uint8_t v)
                         mmu.hdma_to_transfer = 0;
                     }
                     else
-                         mmu.hdma_to_transfer = to_transfer;
+                        mmu.hdma_to_transfer = to_transfer;
  
                     break;
             }

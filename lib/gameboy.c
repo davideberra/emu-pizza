@@ -194,7 +194,7 @@ void gameboy_run()
         z80_execute(op);
 
         /* keep low bits always set to zero */
-//        *state.f &= 0xf0;
+        // *state.f &= 0xf0;
 
         /* if last op was Interrupt Enable (0xFB)  */
         /* we need to check for INTR on next cycle */

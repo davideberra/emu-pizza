@@ -2322,7 +2322,7 @@ int static inline z80_execute(unsigned char code)
           
         /* POP  PSW  */
         case 0xF1: p = (uint8_t *) &state.flags;
-                   *p        = mmu_read(state.sp);
+                   *p        = (mmu_read(state.sp) & 0xf0);
                    state.a   = mmu_read(state.sp + 1);
 
                    state.sp += 2;

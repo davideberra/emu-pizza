@@ -49,10 +49,23 @@ uint32_t          cycles_cnt;
 /* CPU clock */
 uint32_t          cycles_clock;
 
+
+uint16_t          cycles_mask;
+
 #define CYCLES_PAUSES 128
 
 /* internal prototype for timer handler */
 void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
+
+
+/* set double or normal speed */
+void cycles_set_speed(char dbl)
+{
+    if (dbl)
+        cycles_mask = 0xFFFF;
+    else
+        cycles_mask = 0x7FFF;
+} 
 
 
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
@@ -61,7 +74,7 @@ void cycles_step()
     cycles_cnt += 4;
 
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
-    if ((cycles_cnt & 0x7FFF) == 0)
+    if ((cycles_cnt & cycles_mask) == 0)
     {
         int res = 0;
 
@@ -102,6 +115,9 @@ char cycles_init()
     /* init clock and counter */
     cycles_clock = 4194304;
     cycles_cnt = 0;
+
+    /* mask for pauses cycles fast calc */
+    cycles_mask = 0x7FFF;
 
     /* init semaphore for cpu clocks sync */
     sem_init(&cycles_sem, 0, 0);

@@ -276,6 +276,7 @@ typedef struct sound_s
 uint8_t sound_read_reg(uint16_t a, uint8_t v);
 void    sound_init();
 void    sound_read_buffer(void *userdata, uint8_t *stream, int snd_len);
+void    sound_set_speed(char dbl);
 void    sound_step();
 void    sound_term();
 void    sound_write_reg(uint16_t a, uint8_t v);

@@ -27,6 +27,7 @@ extern uint32_t          cycles_clock;
 
 /* prototypes */
 char cycles_init();
+void cycles_set_speed(char dbl);
 char cycles_start_timer();
 void cycles_step();
 void cycles_stop_timer();

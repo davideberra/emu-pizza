@@ -137,6 +137,7 @@ void gpu_toggle(uint8_t state)
         /* LCD turned off - reset stuff */
         gpu.clocks = 0;
         *gpu.ly = 0;
+        (*gpu.lcd_status).mode = 0x00;
     }
 } 
 
@@ -163,7 +164,7 @@ uint16_t *gpu_get_frame_buffer()
 void gpu_draw_line(uint8_t line)
 {
     int i, t, y, px_start, px_drawn;
-    uint8_t *tiles_map, tile_subline, palette_idx;
+    uint8_t *tiles_map, tile_subline, palette_idx, x_flip, priority;
     uint16_t tiles_addr, tile_n, tile_idx, tile_line;
     uint16_t tile_y;
     
@@ -172,7 +173,7 @@ void gpu_draw_line(uint8_t line)
         return;
 
     /* gotta show BG */
-    if ((*gpu.lcd_ctrl).bg)
+    if ((*gpu.lcd_ctrl).bg || global_cgb)
     {
         gpu_cgb_bg_tile_t *tiles_map_cgb = NULL;
 
@@ -200,6 +201,9 @@ void gpu_draw_line(uint8_t line)
         }
         else
         {
+            /* never flip */
+            x_flip = 0;
+
             /* get tile map offset */
             tiles_map = mmu_addr((*gpu.lcd_ctrl).bg_tiles_map ? 
                                  0x9C00 : 0x9800);
@@ -214,6 +218,9 @@ void gpu_draw_line(uint8_t line)
 
             /* monochrome GB uses a single BG palette */
             palette = gpu.bg_palette; 
+
+            /* always priority = 0 */
+            priority = 0;
         }
 
         /* calc tile y */
@@ -228,6 +235,7 @@ void gpu_draw_line(uint8_t line)
   
         /* calc first pixel of frame buffer of the current line */
         uint16_t pos_fb = line * 160;
+        uint16_t pos;
  
         /* calc tile subline */
         tile_subline = tile_y % 8;
@@ -244,14 +252,15 @@ void gpu_draw_line(uint8_t line)
             /* if color gameboy, resolv which palette is bound */
             if (global_cgb)
             {
+                /* extract palette index (0-31) */
                 palette_idx = tiles_map_cgb[tile_idx].palette;
-
-//                if (tile_idx > 0x00 && tile_idx < 0x20)
-//                    printf("TILE IDX %02x - TILE N %02x - PALETTE %d\n", tile_idx, tile_n, palette_idx);
 
                 /* get palette pointer to 4 (16bit) colors */
                 palette = 
                     (uint16_t *) &gpu.cgb_palette_bg_rgb565[palette_idx * 4];
+
+                /* get priority of the tile */
+                priority = tiles_map_cgb[tile_idx].priority;
 
                 if (tiles_map_cgb[tile_idx].vram_bank)
                     tiles = mmu_addr_vram1() +
@@ -259,6 +268,15 @@ void gpu_draw_line(uint8_t line)
                 else
                     tiles = mmu_addr_vram0() +
                             ((*gpu.lcd_ctrl).bg_tiles ? 0x0000 : 0x1000);
+
+                /* calc subline in case of flip_y */
+                if (tiles_map_cgb[tile_idx].y_flip)
+                    tile_subline = 7 - (tile_y % 8);
+                else
+                    tile_subline = tile_y % 8;
+
+                /* save x_flip */
+                x_flip = tiles_map_cgb[tile_idx].x_flip;
             }
 
             /* calc tile data pointer */
@@ -275,7 +293,10 @@ void gpu_draw_line(uint8_t line)
 
             for (y=0; y<8; y++)
             {
-                 shft = (1 << y);
+                 if (x_flip)
+                     shft = (1 << (7 - y));
+                 else
+                     shft = (1 << y);
 
                  pxa[y] = ((b1 & shft) ? 1 : 0) |
                           ((b2 & shft) ? 2 : 0);
@@ -291,8 +312,12 @@ void gpu_draw_line(uint8_t line)
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
-                        palette[pxa[i]];
+                {
+                    pos = pos_fb + (px_drawn - i - 1);
+                   
+                    gpu.priority[pos] = priority;
+                    gpu.frame_buffer[pos] = palette[pxa[i]];
+                }
             }
             else if (t == 20)
             {
@@ -300,14 +325,23 @@ void gpu_draw_line(uint8_t line)
 
                 /* set n pixels */
                 for (i=0; i<px_drawn; i++)
-                    gpu.frame_buffer[pos_fb + (px_drawn - i - 1)] = 
-                        palette[pxa[i + (8 - px_drawn)]];
+                {
+                    pos = pos_fb + (px_drawn - i - 1);
+
+                    gpu.priority[pos] = priority;
+                    gpu.frame_buffer[pos] = palette[pxa[i + (8 - px_drawn)]];
+                }
             } 
             else
             {
                 /* set 8 pixels */
                 for (i=0; i<8; i++)
-                    gpu.frame_buffer[pos_fb + (7 - i)] = palette[pxa[i]];
+                {
+                    pos = pos_fb + (7 - i);
+
+                    gpu.priority[pos] = priority;
+                    gpu.frame_buffer[pos] = palette[pxa[i]];
+                }
 
                 px_drawn = 8;
             }
@@ -437,30 +471,11 @@ void gpu_draw_line(uint8_t line)
             if (tile_pos_y >= 144)
                 break;
 
-            //printf("LINEA %d - TILE %d - TILE POS %d - WINDOW Y %d\n", 
-            //       line, z, tile_pos_y, *(gpu.window_y));
-
-/*            if ((*gpu.lcd_ctrl).bg_tiles == 0)
-                 tile_n = (int8_t) tiles_map[z];
-            else
-                 tile_n = (tiles_map[z] & 0x00ff); */
-
             /* put tile on frame buffer */
             gpu_draw_window_line(z, (uint8_t) tile_pos_x, 
                                  (uint8_t) tile_pos_y, line);
         }
-
     }
-
-         //                                                                                                                                           tiles_addr = 0x9000; */
-         //
-         //                                                                                                                                                       /* get absolute address of tiles area */
-         //                                                                                                                                                                   // tiles = mmu_addr(tiles_addr);
-         //
-         //                                                                                                                                                                               /* monochrome GB uses a single BG palette */
-         //                                                                                                                                                                                           // palette = gpu.bg_palette;
-         //                                                                                                                                                                                                   }
-         //
 }
 
 
@@ -593,7 +608,10 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
          palette = (uint16_t *) &gpu.cgb_palette_oam_rgb565[palette_idx * 4];
    
          /* tiles are into vram0 */
-         tiles = mmu_addr_vram0();
+         if (oam->vram_bank)
+             tiles = mmu_addr_vram1();
+         else
+             tiles = mmu_addr_vram0();
     }
     else
     {
@@ -619,7 +637,7 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
             continue;
 
         /* calc frame position buffer for 4 pixels */
-        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) % 65536; 
+        uint32_t pos_fb = (tile_pos_fb + (tile_y * 160)) & 0xFFFF; //% 65536; 
 
         /* calc tile pointer */
         if (oam->y_flip)
@@ -865,12 +883,26 @@ uint8_t gpu_read_reg(uint16_t a)
 {
     switch (a)
     {
+        case 0xFF68:
+            return (gpu.cgb_palette_bg_autoinc << 7 | gpu.cgb_palette_bg_idx);
+
         case 0xFF69:
 
             if ((gpu.cgb_palette_bg_idx & 0x01) == 0x00)
                 return gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 0x00ff;
             else
                 return (gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 0xff00) >> 8;
+
+        case 0xFF6A:
+            return (gpu.cgb_palette_oam_autoinc << 7 | gpu.cgb_palette_oam_idx);
+
+        case 0xFF6B:
+
+            if ((gpu.cgb_palette_oam_idx & 0x01) == 0x00)
+                return gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 0x00ff;
+            else
+                return (gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 0xff00) >> 8;
+
 
     }
 
