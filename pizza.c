@@ -135,6 +135,7 @@ int main(int argc, char **argv)
                     case (SDLK_w): global_window ^= 0x01; break;
                     case (SDLK_p): gameboy_set_pause(global_pause ^ 0x01); 
                                    break;
+                    case (SDLK_m): mmu_dump_all(); break;
                     case (SDLK_SPACE):  input_set_key_select(1); break;
                     case (SDLK_RETURN): input_set_key_start(1); break;
                     case (SDLK_UP):     input_set_key_up(1);    break;

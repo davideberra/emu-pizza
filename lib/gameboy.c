@@ -85,6 +85,7 @@ void gameboy_init()
     mmu_write_no_cyc(0xFF25, 0xF3); 
     mmu_write_no_cyc(0xFF26, 0xF1);
     mmu_write_no_cyc(0xFF40, 0x91);
+    mmu_write_no_cyc(0xFF41, 0xF0);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
     mmu_write_no_cyc(0xFF44, 0x00);  
@@ -92,7 +93,7 @@ void gameboy_init()
     mmu_write_no_cyc(0xFF47, 0xFC); 
     mmu_write_no_cyc(0xFF48, 0xFF); 
     mmu_write_no_cyc(0xFF49, 0xFF); 
-    mmu_write_no_cyc(0xFF4A, 0x10); 
+    mmu_write_no_cyc(0xFF4A, 0x00); 
     mmu_write_no_cyc(0xFF4B, 0x00); 
     mmu_write_no_cyc(0xFFFF, 0x00);  
     mmu_write_no_cyc(0xC000, 0x08);
@@ -145,7 +146,6 @@ void gameboy_set_pause(char pause)
 void gameboy_run()
 {
     uint8_t op;
-    char    file_sav[1024];
 
     /* init */
     gameboy_init();
@@ -184,8 +184,12 @@ void gameboy_run()
                                    mmu_read_no_cyc(state.sp), 
                                    mmu_read_no_cyc(state.sp + 1));
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x FF41: %02x ", state.a, *state.bc, 
-                                                          *state.de, *state.hl, mmu_read_no_cyc(0xff41));
+            printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x FF41: %02x FF44: %02x FF4B: %02x", state.a, *state.bc, 
+                                                          *state.de, *state.hl, 
+                                                          mmu_read_no_cyc(0xFF40), 
+                                                          mmu_read_no_cyc(0xFF41),
+                                                          mmu_read_no_cyc(0xFF44),
+                                                          mmu_read_no_cyc(0xFF4B));
 
             printf("IF: %02x IE: %02x ENAB %d\n", *int_f, *int_e, state.int_enable);
         }
@@ -264,9 +268,11 @@ void gameboy_run()
     }
 
     /* when ended... save RAM */
-    mmu_save_ram(file_sav);
+    
+    //mmu_save_ram(file_sav);
 
     /* terminate all the stuff */
+    cartridge_term();
     sound_term();
     mmu_term();
  

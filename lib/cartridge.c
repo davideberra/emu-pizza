@@ -27,6 +27,9 @@
 /* buffer big enough to contain the largest possible ROM */
 uint8_t rom[2 << 24];
 
+/* battery backed RAM */
+char file_sav[1024];
+
 
 /* guess what              */
 /* return values           */
@@ -35,7 +38,6 @@ uint8_t rom[2 << 24];
 /* 2: Unknown cartridge    */
 
 char cartridge_load(char *file_gb) {
-    char file_sav[1024];
     FILE *fp;
     int i;
 
@@ -142,8 +144,8 @@ char cartridge_load(char *file_gb) {
                    }
                    break;
         case 0x03: mmu_init_ram(1 << 15); printf("32 kB\n"); break;
-        case 0x04: printf("128 kB\n"); break;
-        case 0x05: printf("64 kB\n"); break;
+        case 0x04: mmu_init_ram(1 << 17); printf("128 kB\n"); break;
+        case 0x05: mmu_init_ram(1 << 16); printf("64 kB\n"); break;
     }
 
     /* load BIOS at 0x0000 address of system memory */
@@ -162,4 +164,9 @@ char cartridge_load(char *file_gb) {
     mmu_load_cartridge(rom, sz);
 
     return 0; 
+}
+
+void cartridge_term()
+{
+    mmu_save_ram(file_sav);
 }

@@ -162,20 +162,8 @@ void mmu_step()
             if (memory[0xFF44] < 143 && 
                 mmu.hdma_current_line != memory[0xFF44])
             {
-                /* update current line */
+                /* update current line (TODO check i'm in HBLANK phase) */
                 mmu.hdma_current_line = memory[0xFF44];
-
-                /* copy right now */
-/*                if (mmu.vram_idx)
-                    memcpy(mmu_addr_vram1() + mmu.hdma_dst_address + 
-                                   mmu.hdma_to_transfer - 0x10 - 0x8000,
-                           &memory[mmu.hdma_src_address +
-                                   mmu.hdma_to_transfer - 0x10], 0x10);
-                else
-                    memcpy(mmu_addr_vram0() + mmu.hdma_dst_address + 
-                                   mmu.hdma_to_transfer - 0x10 - 0x8000,
-                           &memory[mmu.hdma_src_address +
-                                   mmu.hdma_to_transfer - 0x10], 0x10); */
 
                 /* copy 0x10 bytes */
                 if (mmu.vram_idx)
@@ -272,7 +260,7 @@ uint8_t mmu_read(uint16_t a)
 
                 /* HDMA result */
                 if (mmu.hdma_to_transfer)
-                    return 0x00;
+                    return (mmu.hdma_to_transfer / 0x10 - 0x01);
                 else
                     return 0xFF;
 
@@ -464,7 +452,48 @@ void mmu_write(uint16_t a, uint8_t v)
             case 0x10:
             case 0x13:
 
-                if (a >= 0x2000 && a <= 0x3FFF)
+                if (a >= 0x0000 && a <= 0x1FFF)
+                {
+                    if (v == 0x0A)
+                    {
+                        /* already enabled? */
+                        if (mmu.ram_external_enabled)
+                            return;
+
+                        /* save current bank */
+                        memcpy(mmu.ram_internal,
+                               &memory[0xA000], 0x2000);
+
+                        /* restore external ram bank */
+                        memcpy(&memory[0xA000],
+                               &ram[0x2000 * ram_current_bank],
+                               0x2000);
+
+                        /* set external RAM eanbled flag */
+                        mmu.ram_external_enabled = 1;
+
+                        return;
+                    }
+
+                    if (v == 0x00)
+                    {
+                        /* already disabled? */
+                        if (mmu.ram_external_enabled == 0)
+                            return;
+
+                        /* save current bank */
+                        memcpy(&ram[0x2000 * ram_current_bank],
+                               &memory[0xA000], 0x2000);
+
+                        /* restore external ram bank */
+                        memcpy(&memory[0xA000],
+                               mmu.ram_internal, 0x2000);
+
+                        /* clear external RAM eanbled flag */
+                        mmu.ram_external_enabled = 0;
+                    }
+                }
+                else if (a >= 0x2000 && a <= 0x3FFF)
                 {
                     /* set them with new value */
                     b = v & 0x7F;
@@ -479,6 +508,25 @@ void mmu_write(uint16_t a, uint8_t v)
                     /* 0x00 is not valid, switch it to 0x01 */
                     if (b == 0x00)
                         b = 0x01;
+                }
+                else if (a >= 0x4000 && a <= 0x5FFF)
+                {
+                    if (v < 0x08)
+                    {
+                        if ((0x2000 * (v & 0x0f)) < ram_sz)
+                        {
+                            /* save current bank */
+                            memcpy(&ram[0x2000 * ram_current_bank],
+                                   &memory[0xA000], 0x2000);
+  
+                            ram_current_bank = v & 0x0f;
+
+                            /* move new ram bank */
+                            memcpy(&memory[0xA000],
+                                   &ram[0x2000 * ram_current_bank],
+                                   0x2000);
+                        }
+                    }
                 }
 
                 break;
@@ -622,10 +670,10 @@ void mmu_write(uint16_t a, uint8_t v)
                 gpu_toggle(v);
         }
 
-        /* only 4 high bits are writable */
+        /* only 5 high bits are writable */
         if (a == 0xFF41)
         {
-            memory[a] = (memory[a] & 0x0f) | (v & 0xf0);
+            memory[a] = (memory[a] & 0x07) | (v & 0xf8);
             return;
         }
             
@@ -702,6 +750,16 @@ void mmu_write(uint16_t a, uint8_t v)
 
                 case 0xFF55:
 
+                    /* wanna stop HBLANK transfer? a zero on 7th bit will do */
+                    if ((v & 0x80) == 0 && 
+                        mmu.hdma_transfer_mode == 0x01)
+                    {
+                        mmu.hdma_to_transfer = 0x00;
+                        mmu.hdma_transfer_mode = 0x00;
+
+                        return; 
+                    } 
+
                     /* general (0) or hblank (1) ? */
                     mmu.hdma_transfer_mode = ((v & 0x80) ? 1 : 0);
 
@@ -774,7 +832,18 @@ void mmu_write_16(uint16_t a, uint16_t v)
 void mmu_save_ram(char *fn)
 {
     /* save only if cartridge got a battery */
-    if (carttype == 0x03 || carttype == 0x06)
+    if (carttype == 0x03 || 
+        carttype == 0x06 ||
+        carttype == 0x09 ||
+        carttype == 0x0d ||
+        carttype == 0x0f ||
+        carttype == 0x10 ||
+        carttype == 0x13 ||
+        carttype == 0x17 ||
+        carttype == 0x1b ||
+        carttype == 0x1e ||
+        carttype == 0x22 ||
+        carttype == 0xff)
     {
         FILE *fp = fopen(fn, "w+");
 
@@ -789,13 +858,40 @@ void mmu_save_ram(char *fn)
             /* no need to put togheter pieces of ram banks */
             fwrite(&memory[0xA000], ram_sz, 1, fp);
         }
+        else
+        {
+            /* yes, i need to put togheter pieces */
+
+            /* save current used bank */
+            if (mmu.ram_external_enabled)
+                memcpy(&ram[0x2000 * ram_current_bank],
+                       &memory[0xA000], 0x2000);
+            else
+                memcpy(mmu.ram_internal,
+                       &memory[0xA000], 0x2000);
+            
+            /* dump the entire internal + external RAM */
+            fwrite(mmu.ram_internal, 0x2000, 1, fp); 
+            fwrite(ram, ram_sz, 1, fp); 
+        }
     }
 }
 
 void mmu_restore_ram(char *fn)
 {   
     /* save only if cartridge got a battery */
-    if (carttype == 0x03 || carttype == 0x06)
+    if (carttype == 0x03 ||
+        carttype == 0x06 ||
+        carttype == 0x09 ||
+        carttype == 0x0d ||
+        carttype == 0x0f ||
+        carttype == 0x10 ||
+        carttype == 0x13 ||
+        carttype == 0x17 ||
+        carttype == 0x1b ||
+        carttype == 0x1e ||
+        carttype == 0x22 ||
+        carttype == 0xff)
     {
         FILE *fp = fopen(fn, "r+");
 
@@ -808,7 +904,55 @@ void mmu_restore_ram(char *fn)
             /* no need to put togheter pieces of ram banks */
             fread(&memory[0xA000], ram_sz, 1, fp);
         }
+        else
+        {
+            /* read entire file into ram buffer */
+            fread(mmu.ram_internal, 0x2000, 1, fp);
+            fread(ram, ram_sz, 1, fp);
+
+            /* copy internal RAM to 0xA000 address */
+            memcpy(&memory[0xA000], mmu.ram_internal, 0x2000);
+        }
     } 
+}
+
+void mmu_dump_all()
+{
+    int i;
+
+    printf("#### MAIN MEMORY ####\n\n");
+
+    for (i=0; i<0x10000; i++)
+    {
+        if ((i & 0x0f) == 0x00)
+            printf("\n%04x: ", i);
+        printf(" %02x", memory[i]);
+    }
+
+    if (global_cgb)
+    {
+        printf("#### VRAM 0 ####\n\n");
+
+        for (i=0; i<0x2000; i++)
+        {
+            if ((i & 0x0f) == 0x00)
+                printf("\n%04x: ", i);
+            printf(" %02x", mmu.vram0[i]);
+        }
+
+        printf("#### VRAM 1 ####\n\n");
+
+        for (i=0; i<0x2000; i++)
+        {
+            if ((i & 0x0f) == 0x00)
+                printf("\n%04x: ", i);
+            printf(" %02x", mmu.vram1[i]);
+        }
+
+
+    }
+
+
 }
 
 void mmu_term()

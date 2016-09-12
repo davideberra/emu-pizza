@@ -24,5 +24,6 @@
 
 /* prototypes */
 char cartridge_load(char *file_nm);
+void cartridge_term();
 
 #endif

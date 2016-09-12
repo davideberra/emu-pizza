@@ -106,7 +106,7 @@ void gpu_init(gpu_frame_ready_cb_t cb)
     gpu.ly         = mmu_addr(0xFF44);
     gpu.lyc        = mmu_addr(0xFF45);
     gpu_if         = mmu_addr(0xFF0F);
-   
+  
     /* init counters */ 
     gpu.clocks = 0;
     gpu_total_cycles = 0;
@@ -144,6 +144,27 @@ void gpu_toggle(uint8_t state)
 /* push frame on screen */
 void gpu_draw_frame()
 {
+    int i;
+
+    /* simulate shitty gameboy response time of LCD                 */
+    /* by calculating an average between current and previous frame */
+    for (i=0; i<(144*160); i++)
+    {
+        uint16_t r = gpu.frame_buffer[i] & 0x1F;
+        uint16_t g = gpu.frame_buffer[i] >> 5 & 0x3F;
+        uint16_t b = gpu.frame_buffer[i] >> 11 & 0x1F;
+
+        uint16_t r2 = gpu.frame_buffer_prev[i] & 0x1F;
+        uint16_t g2 = gpu.frame_buffer_prev[i] >> 5 & 0x3F;
+        uint16_t b2 = gpu.frame_buffer_prev[i] >> 11 & 0x1F;
+
+        gpu.frame_buffer_prev[i] = gpu.frame_buffer[i];
+
+        gpu.frame_buffer[i] = ((r + r2) / 2) |
+                              (((g + g2) / 2) << 5) |
+                              (((b + b2) / 2) << 11);
+    }
+        
     /* call the callback */
     if (gpu_frame_ready_cb)
         (*gpu_frame_ready_cb) ();
@@ -172,20 +193,10 @@ void gpu_draw_line(uint8_t line)
     if (line > 144)
         return;
 
-    /* gotta show BG */
+    /* gotta show BG? Answer is always YES in case of Gameboy Color */
     if ((*gpu.lcd_ctrl).bg || global_cgb)
     {
         gpu_cgb_bg_tile_t *tiles_map_cgb = NULL;
-
-        /* get tile map offset */
-        /*tiles_map = mmu_addr((*gpu.lcd_ctrl).bg_tiles_map ? 
-                             0x9C00 : 0x9800);
-
-        if ((*gpu.lcd_ctrl).bg_tiles)
-             tiles_addr = 0x8000;
-        else
-             tiles_addr = 0x9000; */
-
         uint8_t *tiles = NULL; 
         uint16_t *palette;
 
@@ -421,39 +432,31 @@ void gpu_draw_line(uint8_t line)
         /* at least the current line is covering the window area? */
         if (line < *(gpu.window_y))
             return;
- 
+
+        /* TODO - reset this in a better place */ 
+        if (line == *(gpu.window_y))
+            gpu.window_skipped_lines = 0;
+
         int z, first_z;
         uint8_t tile_pos_x, tile_pos_y;
 
         /* gotta draw a window? check if it is inside screen coordinates */
         if (*(gpu.window_y) >= 144 ||
             *(gpu.window_x) >= 160)
+        {
+            gpu.window_skipped_lines++;
             return; 
-
-        if (global_cgb)
-        {
-            /* CGB tile map into VRAM0 */
-            tiles_map = mmu_addr_vram0() + ((*gpu.lcd_ctrl).window_tiles_map ?
-                                  0x1C00 : 0x1800);
-        }
-        else
-        {
-            /* get tile map offset */
-            tiles_map = mmu_addr((*gpu.lcd_ctrl).window_tiles_map ?
-                                 0x9C00 : 0x9800);
         }
 
         /* calc the first interesting tile */
-        first_z = ((line - *(gpu.window_y)) >> 3) << 5;
-
-        /* add X offset */
-        first_z += (*(gpu.window_x) - 7) >> 3;
+        first_z = ((line - *(gpu.window_y) - gpu.window_skipped_lines) >> 3) << 5;
 
         for (z=first_z; z<first_z + 21; z++)
         {
             /* calc tile coordinates on frame buffer */
             tile_pos_x = ((z & 0x1F) << 3) + *(gpu.window_x) - 7;
-            tile_pos_y = ((z >> 5) << 3) + *(gpu.window_y);
+            tile_pos_y = ((z >> 5) << 3) + *(gpu.window_y) + 
+                         gpu.window_skipped_lines;
 
             /* gone over the current line? */
             if (tile_pos_y > line)
@@ -465,15 +468,15 @@ void gpu_draw_line(uint8_t line)
             /* gone over the screen visible X? */
             /* being between last column and first one is valid */
             if (tile_pos_x >= 160 && tile_pos_x < 248)
-                continue;
+                break;
 
-            /* gone over the screen visible Y? stop it */
-            if (tile_pos_y >= 144)
+            /* gone over the screen visible section? stop it */
+            if (tile_pos_y >= 144) // || (tile_pos_x >= 160))
                 break;
 
             /* put tile on frame buffer */
             gpu_draw_window_line(z, (uint8_t) tile_pos_x, 
-                                 (uint8_t) tile_pos_y, line);
+                                    (uint8_t) tile_pos_y, line);
         }
     }
 }
@@ -574,7 +577,7 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
         pos = pos_fb + x; 
 
         /* can overwrite sprites? depends on pixel priority */
-        if (gpu.priority[pos] == 0)
+        if (gpu.priority[pos] != 0x02)
             gpu.frame_buffer[pos] = palette[pxa[i]];
     }
 }
@@ -682,10 +685,28 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 
             if (global_cgb)
             {
+/*                if ((pxa[i] != 0x00) &&
+                    (gpu.priority[pos] == 0x00 || 
+                     oam->priority == 1))*/
                 if (pxa[i] != 0x00) 
                 {
-                    gpu.frame_buffer[pos] = palette[pxa[i]];
-                    gpu.priority[pos] = !oam->priority;
+                    /* flag clr = sprites always on top of bg and window */
+                    if ((*gpu.lcd_ctrl).bg == 0)
+                    {
+                        gpu.frame_buffer[pos] = palette[pxa[i]];
+                        gpu.priority[pos] = 0x02; 
+                    } 
+                    else 
+                    {
+                        if ((gpu.priority[pos] == 0) &&
+                            (oam->priority == 0 ||
+                            (oam->priority == 1 &&
+                             gpu.frame_buffer[pos] == palette[0x00])))
+                        {
+                            gpu.frame_buffer[pos] = palette[pxa[i]];
+                            gpu.priority[pos] = (oam->priority ? 0x00 : 0x02);
+                        }
+                    }
                 }
             }
             else
@@ -699,7 +720,7 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
                      gpu.frame_buffer[pos] == gpu.bg_palette[0x00])))
                 {
                     gpu.frame_buffer[pos] = palette[pxa[i]];
-                    gpu.priority[pos] = !oam->priority;
+                    gpu.priority[pos] = (oam->priority ? 0x00 : 0x02);
                 }
             }
         }

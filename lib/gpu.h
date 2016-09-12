@@ -79,6 +79,10 @@ typedef struct gpu_s
     /* clocks counter   */
     uint32_t  clocks;
 
+    /* window last drawn lines */
+    uint8_t   window_last_ly;
+    uint8_t   window_skipped_lines;
+
     /* BG palette       */
     uint16_t  bg_palette[4]; 
 
@@ -99,6 +103,7 @@ typedef struct gpu_s
     uint8_t   cgb_palette_oam_autoinc;
 
     /* frame buffer     */
+    uint16_t  frame_buffer_prev[160 * 144];
     uint16_t  frame_buffer[160 * 144];
     char      priority[160 * 144];
 
