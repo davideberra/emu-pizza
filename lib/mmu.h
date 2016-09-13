@@ -41,7 +41,9 @@ void          mmu_write(uint16_t a, uint8_t v);
 unsigned int  mmu_read_16(uint16_t a);
 void          mmu_write_16(uint16_t a, uint16_t v);
 void          mmu_save_ram(char *fn);
+void          mmu_save_rtc(char *fn);
 void          mmu_restore_ram(char *fn);
+void          mmu_restore_rtc(char *fn);
 void          mmu_term();
 
 #endif

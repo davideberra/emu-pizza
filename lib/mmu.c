@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 
 /* GAMEBOY MEMORY AREAS 
 
@@ -70,8 +71,8 @@ uint8_t ram_current_bank = 0;
 uint8_t banking = 0;
 
 /* DMA counter and address */
-uint16_t mmu_dma_address = 0;
-uint16_t mmu_dma_cycles = 0;
+// uint16_t mmu_dma_address = 0;
+// uint16_t mmu_dma_cycles = 0;
 
 
 typedef struct mmu_s {
@@ -94,12 +95,21 @@ typedef struct mmu_s {
     /* current WRAM bank (only CGB) */
     uint8_t wram_current_bank;
 
+    /* DMA transfer stuff */
+    uint16_t dma_address;
+    uint16_t dma_cycles;
+
     /* HDMA transfer stuff */
     uint16_t hdma_src_address;
     uint16_t hdma_dst_address;
     uint16_t hdma_to_transfer;
     uint8_t  hdma_transfer_mode;
     uint8_t  hdma_current_line;
+
+    /* RTC stuff */
+    uint8_t rtc_mode;
+    time_t  rtc_time;
+    time_t  rtc_latch_time;
 
 } mmu_t;
 
@@ -123,6 +133,10 @@ void mmu_init(uint8_t c, uint8_t rn)
     mmu.wram_current_bank = 1;
     mmu.ram_current_bank = 0;
     mmu.ram_external_enabled = 0;
+    mmu.dma_cycles = 0;
+    mmu.dma_address = 0;
+    mmu.rtc_mode = 0;
+    time(&mmu.rtc_time);
 }
 
 /* init (alloc) system state.memory */
@@ -139,17 +153,17 @@ void mmu_init_ram(uint32_t c)
 void mmu_step()
 {
     /* DMA */
-    if (mmu_dma_address != 0x00)
+    if (mmu.dma_address != 0x0000)
     {
-        mmu_dma_cycles -= 4;
+        mmu.dma_cycles -= 4;
     
         /* enough cycles passed? */
-        if (mmu_dma_cycles == 0)
+        if (mmu.dma_cycles == 0)
         {
-            memcpy(&memory[0xFE00], &memory[mmu_dma_address], 160);
+            memcpy(&memory[0xFE00], &memory[mmu.dma_address], 160);
 
             /* reset address */
-            mmu_dma_address = 0x00;
+            mmu.dma_address = 0x0000;
         }
     }
 
@@ -159,10 +173,12 @@ void mmu_step()
         /* hblank transfer */
         if (mmu.hdma_transfer_mode)
         {
+            /* transfer when line is changed and we're into HBLANK phase */
             if (memory[0xFF44] < 143 && 
-                mmu.hdma_current_line != memory[0xFF44])
+                mmu.hdma_current_line != memory[0xFF44] && 
+                (memory[0xFF41] & 0x03) == 0x00)
             {
-                /* update current line (TODO check i'm in HBLANK phase) */
+                /* update current line */
                 mmu.hdma_current_line = memory[0xFF44];
 
                 /* copy 0x10 bytes */
@@ -268,6 +284,8 @@ uint8_t mmu_read(uint16_t a)
             case 0xFF69:
             case 0xFF6A:
             case 0xFF6B:
+                
+                /* color palettes registers */
                 return gpu_read_reg(a);
 
         }
@@ -279,6 +297,26 @@ uint8_t mmu_read(uint16_t a)
                 return mmu.vram0[a - 0x8000];
             else
                 return mmu.vram1[a - 0x8000];
+        }
+
+        /* RTC stuff? only for MBC3 */
+        if (mmu.rtc_mode != 0x00 && a >= 0xA000 && a <= 0xBFFF)
+        {
+            time_t diff = mmu.rtc_latch_time - mmu.rtc_time;
+
+            switch (mmu.rtc_mode)
+            {
+                case 0x08: 
+                    return (diff % 60);
+                case 0x09: 
+                    return ((diff / 60) % 60);
+                case 0x0A: 
+                    return (diff / 3600) % 24;
+                case 0x0B: 
+                    return (diff / (3600 * 24)) & 0x00FF;
+                case 0x0C: 
+                    return ((diff / (3600 * 24)) & 0xFF00) >> 8;
+            }
         }
     }
 
@@ -308,9 +346,90 @@ void mmu_write(uint16_t a, uint8_t v)
             else
                 mmu.vram1[a - 0x8000] = v;
 
-//            memory[a] = v;
-
             return;
+        }
+        else 
+        {
+            /* wanna access to RTC register? */
+            if (a >= 0xA000 && a <= 0xBFFF && mmu.rtc_mode != 0x00)
+            {
+                time_t t,s1,s2,m1,m2,h1,h2,d1,d2,days;
+
+                /* get current time */
+                time(&t);
+
+                /* extract parts in seconds from current and ref times */
+                s1 = t % 60;
+                s2 = mmu.rtc_time % 60;
+
+                m1 = (t - s1) % (60 * 60);
+                m2 = (mmu.rtc_time - s2) % (60 * 60);
+
+                h1 = (t - m1 - s1) % (60 * 60 * 24);
+                h2 = (mmu.rtc_time - m2 - s2) % (60 * 60 * 24);
+
+                d1 = t - h1 - m1 - s1; 
+                d2 = mmu.rtc_time - h2 - m2 - s2; 
+
+                switch (mmu.rtc_mode)
+                {
+                    case 0x08:
+
+                        /* remove seconds from current time */
+                        mmu.rtc_time -= s2;
+
+                        /* set new seconds */
+                        mmu.rtc_time += (s1 - v);
+
+                        return;
+                    
+                    case 0x09:
+
+                        /* remove seconds from current time */
+                        mmu.rtc_time -= m2;
+
+                        /* set new seconds */
+                        mmu.rtc_time += (m1 - (v * 60));
+
+                        return;
+                    
+                    case 0x0A:
+
+                        /* remove seconds from current time */
+                        mmu.rtc_time -= h2;
+
+                        /* set new seconds */
+                        mmu.rtc_time += (h1 - (v * 60 * 24));
+
+                        return;
+                    
+                    case 0x0B:
+
+                        days = (((d1 - d2) / 
+                                (60 * 60 * 24)) & 0xFF00) | v;
+
+                        /* remove seconds from current time */
+                        mmu.rtc_time -= d2;
+
+                        /* set new seconds */
+                        mmu.rtc_time += (d1 - (days * 60 * 60 * 24));
+
+                        return;
+
+                    case 0x0C:
+
+                        days = (((d1 - d2) / 
+                                (60 * 60 * 24)) & 0xFEFF) | (v << 8);
+
+                        /* remove seconds from current time */
+                        mmu.rtc_time -= d2;
+
+                        /* set new seconds */
+                        mmu.rtc_time += (d1 - (days * 60 * 60 * 24));
+
+                        return;
+                }
+            }
         }
             
         /* switch WRAM */
@@ -511,8 +630,12 @@ void mmu_write(uint16_t a, uint8_t v)
                 }
                 else if (a >= 0x4000 && a <= 0x5FFF)
                 {
+                    /* 0x00 to 0x07 is referred to RAM bank */
                     if (v < 0x08)
                     {
+                        /* not on RTC mode anymore */
+                        mmu.rtc_mode = 0x00;
+
                         if ((0x2000 * (v & 0x0f)) < ram_sz)
                         {
                             /* save current bank */
@@ -527,7 +650,19 @@ void mmu_write(uint16_t a, uint8_t v)
                                    0x2000);
                         }
                     }
+                    else if (v < 0x0d)
+                    {
+                        /* from 0x08 to 0x0C trigger RTC mode */
+                        mmu.rtc_mode = v;
+                    }
+                    
                 }
+                else if (a >= 0x6000 && a <= 0x7FFF)
+                {
+                    /* latch clock data. move clock data to RTC registers */
+                    time(&mmu.rtc_latch_time);
+                }
+
 
                 break;
 
@@ -543,6 +678,10 @@ void mmu_write(uint16_t a, uint8_t v)
                 {
                     if (v == 0x0A)
                     {
+                        /* we got external RAM? some stupid game try to do shit */
+                        if (ram_sz == 0)
+                            return;
+
                         /* already enabled? */
                         if (mmu.ram_external_enabled)
                             return;
@@ -564,6 +703,10 @@ void mmu_write(uint16_t a, uint8_t v)
 
                     if (v == 0x00)
                     {
+                        /* we got external RAM? some stupid game try to do shit */
+                        if (ram_sz == 0)
+                            return;
+
                         /* already disabled? */
                         if (mmu.ram_external_enabled == 0)
                             return;
@@ -798,10 +941,10 @@ void mmu_write(uint16_t a, uint8_t v)
         if (a == 0xFF46)
         {
             /* calc source address */ 
-            mmu_dma_address = v * 256;
+            mmu.dma_address = v * 256;
 
             /* initialize counter, DMA needs 672 ticks */
-            mmu_dma_cycles = 168;
+            mmu.dma_cycles = 168;
         }
     }
     else
@@ -874,6 +1017,26 @@ void mmu_save_ram(char *fn)
             fwrite(mmu.ram_internal, 0x2000, 1, fp); 
             fwrite(ram, ram_sz, 1, fp); 
         }
+
+        fclose(fp);
+    }
+}
+
+void mmu_save_rtc(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (carttype == 0x10 ||
+        carttype == 0x13)
+    {
+        FILE *fp = fopen(fn, "w+");
+
+        if (fp == NULL)
+        {
+            printf("Error saving RTC\n");
+            return;
+        }
+
+        fprintf(fp, "%ld", mmu.rtc_time);
     }
 }
 
@@ -913,7 +1076,34 @@ void mmu_restore_ram(char *fn)
             /* copy internal RAM to 0xA000 address */
             memcpy(&memory[0xA000], mmu.ram_internal, 0x2000);
         }
+
+        fclose(fp);
     } 
+}
+
+void mmu_restore_rtc(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (carttype == 0x10 ||
+        carttype == 0x13) 
+    {
+        FILE *fp = fopen(fn, "r+");
+
+        /* it could be not present */
+        if (fp == NULL)
+        {
+            /* just pick current time */
+            time(&mmu.rtc_time);
+            return;
+        }
+
+        /* read last saved time */
+        fscanf(fp, "%ld", &mmu.rtc_time);
+
+        printf("LETTO TIME %ld\n", mmu.rtc_time);
+
+        fclose(fp);
+    }
 }
 
 void mmu_dump_all()

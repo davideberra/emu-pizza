@@ -105,7 +105,8 @@ typedef struct gpu_s
     /* frame buffer     */
     uint16_t  frame_buffer_prev[160 * 144];
     uint16_t  frame_buffer[160 * 144];
-    char      priority[160 * 144];
+    uint8_t   priority[160 * 144];
+    uint8_t   palette_idx[160 * 144];
 
 } gpu_t;
 

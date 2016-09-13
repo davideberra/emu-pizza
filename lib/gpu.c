@@ -171,6 +171,7 @@ void gpu_draw_frame()
 
     /* reset priority matrix */
     bzero(gpu.priority, 160 * 144);
+    bzero(gpu.palette_idx, 160 * 144);
 
     return;
 }
@@ -327,6 +328,7 @@ void gpu_draw_line(uint8_t line)
                     pos = pos_fb + (px_drawn - i - 1);
                    
                     gpu.priority[pos] = priority;
+                    gpu.palette_idx[pos] = pxa[i];
                     gpu.frame_buffer[pos] = palette[pxa[i]];
                 }
             }
@@ -340,6 +342,7 @@ void gpu_draw_line(uint8_t line)
                     pos = pos_fb + (px_drawn - i - 1);
 
                     gpu.priority[pos] = priority;
+                    gpu.palette_idx[pos] = pxa[i];
                     gpu.frame_buffer[pos] = palette[pxa[i + (8 - px_drawn)]];
                 }
             } 
@@ -351,6 +354,7 @@ void gpu_draw_line(uint8_t line)
                     pos = pos_fb + (7 - i);
 
                     gpu.priority[pos] = priority;
+                    gpu.palette_idx[pos] = pxa[i];
                     gpu.frame_buffer[pos] = palette[pxa[i]];
                 }
 
@@ -379,11 +383,12 @@ void gpu_draw_line(uint8_t line)
         uint8_t h = ((*gpu.lcd_ctrl).sprites_size + 1) * 8;
 
         int sort[40];
+        int j = 0;
 
         /* prepare sorted list of oams */        
         for (i=0; i<40; i++)
             sort[i] = -1;
-        
+
         for (i=0; i<40; i++)
         {
             /* the sprite intersects the current line? */
@@ -392,8 +397,13 @@ void gpu_draw_line(uint8_t line)
                 line < (oam[i].y + h - 16) &&
                 line >= (oam[i].y - 16))
             {
-                int j;
-
+                /* color GB uses memory position as priority criteria */
+                if (global_cgb)
+                {
+                    sort[j++] = i; 
+                    continue;
+                }
+                    
                 /* find its position on sort array */
                 for (j=0; j<40; j++)
                 {
@@ -402,6 +412,9 @@ void gpu_draw_line(uint8_t line)
                         sort[j] = i;
                         break;
                     }
+
+                    if (global_cgb)
+                        continue;
 
                     if ((oam[i].y < oam[sort[j]].y) ||
                         ((oam[i].y == oam[sort[j]].y) &&
@@ -449,7 +462,8 @@ void gpu_draw_line(uint8_t line)
         }
 
         /* calc the first interesting tile */
-        first_z = ((line - *(gpu.window_y) - gpu.window_skipped_lines) >> 3) << 5;
+        first_z = ((line - *(gpu.window_y) - 
+                    gpu.window_skipped_lines) >> 3) << 5;
 
         for (z=first_z; z<first_z + 21; z++)
         {
@@ -491,7 +505,7 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
     int16_t tile_n;
     uint8_t *tiles_map;
     gpu_cgb_bg_tile_t *tiles_map_cgb = NULL;
-    uint8_t *tiles;
+    uint8_t *tiles, x_flip;
     uint16_t *palette;
 
     if (global_cgb)
@@ -506,6 +520,7 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
 
         /* get palette index */
         uint8_t palette_idx = tiles_map_cgb[tile_idx].palette;
+        x_flip = tiles_map_cgb[tile_idx].x_flip;
 
         /* get palette pointer to 4 (16bit) colors */
         palette = (uint16_t *) &gpu.cgb_palette_bg_rgb565[palette_idx * 4];
@@ -533,6 +548,9 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
 
         /* monochrome GB uses a single BG palette */
         palette = gpu.bg_palette;
+
+        /* never flip */
+        x_flip = 0;
     }
 
     /* obtain tile number */
@@ -555,10 +573,16 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
     /* bit 1 of the pixel is taken from odd position tile bytes */
 
     uint8_t  pxa[8];
+    uint8_t  shft;
 
     for (y=0; y<8; y++)
     {
-         uint8_t shft = (1 << y);
+         //uint8_t shft = (1 << y);
+
+         if (x_flip)
+             shft = (1 << (7 - y));
+         else
+             shft = (1 << y);
 
          pxa[y] = ((*(tiles + tile_ptr) & shft) ? 1 : 0) |
                   ((*(tiles + tile_ptr + 1) & shft) ? 2 : 0);
@@ -685,9 +709,7 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 
             if (global_cgb)
             {
-/*                if ((pxa[i] != 0x00) &&
-                    (gpu.priority[pos] == 0x00 || 
-                     oam->priority == 1))*/
+                /* sprite color 0 = transparent */
                 if (pxa[i] != 0x00) 
                 {
                     /* flag clr = sprites always on top of bg and window */
@@ -698,10 +720,12 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
                     } 
                     else 
                     {
-                        if ((gpu.priority[pos] == 0) &&
+                        if (((gpu.priority[pos] == 0) &&
                             (oam->priority == 0 ||
                             (oam->priority == 1 &&
-                             gpu.frame_buffer[pos] == palette[0x00])))
+                             gpu.palette_idx[pos] == 0x00))) ||
+                            (gpu.priority[pos] == 1 &&
+                             gpu.palette_idx[pos] == 0x00))
                         {
                             gpu.frame_buffer[pos] = palette[pxa[i]];
                             gpu.priority[pos] = (oam->priority ? 0x00 : 0x02);

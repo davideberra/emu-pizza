@@ -27,8 +27,9 @@
 /* buffer big enough to contain the largest possible ROM */
 uint8_t rom[2 << 24];
 
-/* battery backed RAM */
+/* battery backed RAM & RTC*/
 char file_sav[1024];
+char file_rtc[1024];
 
 
 /* guess what              */
@@ -157,8 +158,14 @@ char cartridge_load(char *file_gb) {
     /* build file.sav */
     snprintf(file_sav, sizeof(file_sav), "%s.sav", file_gb);
 
+    /* build file.rtc */
+    snprintf(file_rtc, sizeof(file_rtc), "%s.rtc", file_gb);
+
     /* restore saved RAM if it's the case */
     mmu_restore_ram(file_sav);
+
+    /* restore saved RTC if it's the case */
+    mmu_restore_rtc(file_rtc);
 
     /* load FULL ROM at 0x0000 address of system memory */
     mmu_load_cartridge(rom, sz);
@@ -168,5 +175,7 @@ char cartridge_load(char *file_gb) {
 
 void cartridge_term()
 {
+    /* save persistent data (battery backed RAM and RTC clock) */
     mmu_save_ram(file_sav);
+    mmu_save_rtc(file_rtc);
 }
