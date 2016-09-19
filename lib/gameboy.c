@@ -167,6 +167,12 @@ void gameboy_run()
     /* and repeat forever                                                  */
     while (!global_quit)
     {
+        if (global_slow_down)
+        {
+            usleep(100000);
+            global_slow_down = 0;
+        }
+
         /* pause? */
         while (global_pause) 
             sem_wait(&gameboy_sem);

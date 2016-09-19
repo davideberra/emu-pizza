@@ -27,6 +27,8 @@ extern char global_debug;
 extern char global_cgb;
 // extern char global_started;
 extern char global_double_speed;
+extern char global_slow_down;
+extern char global_record_audio;
 
 /* prototypes */
 void global_init();

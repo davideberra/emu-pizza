@@ -31,7 +31,7 @@
 #include <sys/time.h>
 
 /* */
-#define SOUND_BUF_SZ  (SOUND_FREQ * 10)
+#define SOUND_BUF_SZ  (SOUND_SAMPLES * 3)
 
 /* circular buffer */
 int16_t  sound_buf[SOUND_BUF_SZ];
@@ -50,6 +50,8 @@ pthread_cond_t    sound_cond;
 pthread_mutex_t   sound_mutex;
 char              sound_buffer_full = 0;
 char              sound_buffer_empty = 0;
+
+int16_t latest_sample = 0;
 
 /* super variable for audio controller */
 sound_t sound;
@@ -143,13 +145,13 @@ void sound_step()
     if (sound_fs_cycles_cnt == sound_fs_cycles)
     {
         /* rotate from 0 to 7 */
-        sound.fs_cycles = (sound.fs_cycles + 1) % 8;
+        sound.fs_cycles = (sound.fs_cycles + 1) & 0x07;
 
         /* reset fs cycles counter */
         sound_fs_cycles_cnt = 0; // sound_fs_cycles;
 
         /* length controller works at 256hz */
-        if (sound.fs_cycles % 2 == 0)
+        if ((sound.fs_cycles & 0x01) == 0)
             sound_length_ctrl_step();
 
         /* sweep works at 128hz */
@@ -166,7 +168,7 @@ void sound_step()
     /* update channel one */
     if (sound.channel_one.active)
     {
-        sound.channel_one.duty_cycles_cnt += 4L;
+        sound.channel_one.duty_cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a duty step? */
         if (sound.channel_one.duty_cycles_cnt >= 
@@ -179,7 +181,8 @@ void sound_step()
                 sound.channel_one.sample = -sound.channel_one.volume;
 
             /* step to the next duty value */
-            sound.channel_one.duty_idx = (sound.channel_one.duty_idx + 1) % 8;
+            sound.channel_one.duty_idx = 
+                (sound.channel_one.duty_idx + 1) & 0x07;
 
             /* go back */
             sound.channel_one.duty_cycles_cnt -= sound.channel_one.duty_cycles;
@@ -189,7 +192,7 @@ void sound_step()
     /* update channel two */
     if (sound.channel_two.active)
     {
-        sound.channel_two.duty_cycles_cnt += 4L;
+        sound.channel_two.duty_cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a duty step? */
         if (sound.channel_two.duty_cycles_cnt >=
@@ -336,26 +339,33 @@ void sound_step()
                 channels_left++;
             }
         }
-         
-        if (1 || sound.channel_three.active)
-        {
-            uint8_t idx = sound.channel_three.index;
 
-            /* extract current sample */
-            if ((idx & 0x01) == 0)
-                sample = (sound.wave_table[idx >> 1] & 0xf0) >> 4;
-            else
-                sample = sound.wave_table[idx >> 1] & 0x0f;
-               
+        if (sound.channel_three.active)
+        {
             uint8_t shift = (sound.nr32->volume_code == 0 ?
                              4 : sound.nr32->volume_code - 1);
- 
-            /* apply volume change */
-            sample >>= shift;
 
-            /* transform it into signed 16 bit sample */
-            sample = (sample * 0x1111) - (0xFFFF / 2);
+            /* volume is zero in any case */ 
+            if (shift == 4)
+                sample = 0;
+            else
+            {
+                /* apply volume change */
+                // sample >>= shift;
+                uint8_t idx = sound.channel_three.index;
+                uint16_t s;
 
+                /* extract current sample */
+                if ((idx & 0x01) == 0)
+                    s = (sound.wave_table[idx >> 1] & 0xf0) >> 4;
+                else
+                    s = sound.wave_table[idx >> 1] & 0x0f;
+
+                /* transform it into signed 16 bit sample */
+                sample = ((s * 0x888) >> shift); 
+            }
+
+            
             /* not silence? */
             if (sample != 0)
             {
@@ -480,10 +490,9 @@ void sound_push_sample(int16_t s)
     /* wait for the audio to be played */
     if (sound_buf_available == SOUND_BUF_SZ)
     {
-        sound_buffer_full = 1;
-
-        while (sound_buffer_full == 1)
-            pthread_cond_wait(&sound_cond, &sound_mutex);
+        /* if full, just discard an old sample */
+        sound_buf_available--;
+        sound_buf_rd = (sound_buf_rd + 1) % SOUND_BUF_SZ; 
     }
 
     /* unlock it */
@@ -852,6 +861,26 @@ void sound_write_reg(uint16_t a, uint8_t v)
             /* set length as 64 - length_load */
             sound.channel_one.length = 64 - sound.nr11->length_load;
 
+            /* update duty type */
+            switch (sound.nr11->duty)
+            {
+                           /* 12.5 % */
+                case 0x00: sound.channel_one.duty = 0x80;
+                           break;
+
+                           /* 25% */
+                case 0x01: sound.channel_one.duty = 0x81;
+                           break;
+
+                           /* 50% */
+                case 0x02: sound.channel_one.duty = 0xE1;
+                           break;
+
+                           /* 75% */
+                case 0x03: sound.channel_one.duty = 0x7E;
+                           break;
+            }
+
             break;
 
         case 0xFF12:
@@ -894,24 +923,37 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                &sound.channel_one.active);
             }
 
+            /* always update frequency, even if it's not a trigger */
+            sound.channel_one.frequency = sound.nr13->frequency_lsb |
+                                          (sound.nr14->frequency_msb << 8);
+
+            /* qty of cpu ticks needed for a duty change */
+            /* (1/8 of wave cycle) */
+            sound.channel_one.duty_cycles = 
+                (2048 - sound.channel_one.frequency) * 4;
+
             if (v & 0x80) 
             {
-                uint16_t freq = sound.nr13->frequency_lsb |
-                                (sound.nr14->frequency_msb << 8);
+//                uint16_t freq = sound.nr13->frequency_lsb |
+//                                (sound.nr14->frequency_msb << 8);
+
+                /* if we switch from OFF to ON, reset duty idx */
+                if (sound.channel_two.active == 0)
+                    sound.channel_two.duty_idx = 0;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_one.active = 1;
-                sound.channel_one.frequency = freq;
+//                sound.channel_one.frequency = freq;
 
                 /* qty of cpu ticks needed for a duty change */
                 /* (1/8 of wave cycle) */
-                sound.channel_one.duty_cycles = (2048 - freq) * 4;    
+//                sound.channel_one.duty_cycles = (2048 - freq) * 4;    
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
                 switch (sound.nr11->duty)
                 {
                                /* 12.5 % */
-                    case 0x00: sound.channel_one.duty = 0x01;
+                    case 0x00: sound.channel_one.duty = 0x80;
                                break;
 
                                /* 25% */
@@ -919,7 +961,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                break;
 
                                /* 50% */
-                    case 0x02: sound.channel_one.duty = 0x87;
+                    case 0x02: sound.channel_one.duty = 0xE1;
                                break;
 
                                /* 75% */
@@ -928,7 +970,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 }
 
                 /* start duty from the 1st bit */
-                sound.channel_one.duty_idx = 0;
+//                sound.channel_one.duty_idx = 0;
 
                 /* calc length */
                 if (sound.channel_one.length == 0)
@@ -942,7 +984,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_one.envelope_cnt = 0;
 
                 /* save current freq into sweep shadow register */
-                sound.channel_one.sweep_shadow_frequency = freq;
+                sound.channel_one.sweep_shadow_frequency = 
+                    sound.channel_one.frequency;
 
                 /* reset sweep timer */
                 sound.channel_one.sweep_cnt = 0;
@@ -987,9 +1030,29 @@ void sound_write_reg(uint16_t a, uint8_t v)
             break;
 
         case 0xFF16:
-      
+     
             sound.channel_two.length = 64 - sound.nr21->length_load;
 
+            /* update duty type */
+            switch (sound.nr21->duty)
+            {
+                           /* 12.5 % */
+                case 0x00: sound.channel_two.duty = 0x80;
+                           break;
+
+                           /* 25% */
+                case 0x01: sound.channel_two.duty = 0x81;
+                           break;
+
+                           /* 50% */
+                case 0x02: sound.channel_two.duty = 0xE1;
+                           break;
+
+                           /* 75% */
+                case 0x03: sound.channel_two.duty = 0x7E;
+                           break;
+            }
+       
             break;
 
         case 0xFF17:
@@ -1004,8 +1067,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
         case 0xFF18:
 
             /* update frequncy */
-            sound.channel_two.frequency = sound.nr23->frequency_lsb |
-                                          (sound.nr24->frequency_msb << 8);
+            sound.channel_two.frequency = (sound.nr23->frequency_lsb |
+                                          (sound.nr24->frequency_msb << 8));
 
             /* update duty cycles */
             sound.channel_two.duty_cycles =
@@ -1032,24 +1095,37 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                &sound.channel_two.active);
             }
 
+            /* always update frequency, even if it's not a trigger */
+            sound.channel_two.frequency = sound.nr23->frequency_lsb |
+                                          (sound.nr24->frequency_msb << 8);
+
+            /* qty of cpu ticks needed for a duty change */ 
+            /* (1/8 of wave cycle) */
+            sound.channel_two.duty_cycles = 
+                (2048 - sound.channel_two.frequency) * 4;
+
             if (v & 0x80) 
             {
-                uint16_t freq = sound.nr23->frequency_lsb |
-                                (sound.nr24->frequency_msb << 8);
+//                uint16_t freq = sound.nr23->frequency_lsb |
+//                                (sound.nr24->frequency_msb << 8);
+
+                /* if we switch from OFF to ON, reset duty idx */
+                if (sound.channel_two.active == 0)
+                    sound.channel_two.duty_idx = 0;
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_two.active = 1;
-                sound.channel_two.frequency = freq;
+//                sound.channel_two.frequency = freq;
 
                 /* qty of cpu ticks needed for a duty change */ 
                 /* (1/8 of wave cycle) */
-                sound.channel_two.duty_cycles = (2048 - freq) * 4;
+//                sound.channel_two.duty_cycles = (2048 - freq) * 2;
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
                 switch (sound.nr21->duty)
                 {
                                /* 12.5 % */
-                    case 0x00: sound.channel_two.duty = 0x01;
+                    case 0x00: sound.channel_two.duty = 0x80;
                                break;
 
                                /* 25% */
@@ -1057,7 +1133,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                break;
 
                                /* 50% */
-                    case 0x02: sound.channel_two.duty = 0x87;
+                    case 0x02: sound.channel_two.duty = 0xE1;
                                break;
 
                                /* 75% */
@@ -1066,7 +1142,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 }
 
                 /* start duty from the 8th bit */
-                sound.channel_two.duty_idx = 0;
+//                sound.channel_two.duty_idx = 0;
  
                 /* calc length */
                 if (sound.channel_two.length == 0)
@@ -1092,6 +1168,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                &sound.channel_two.length,
                                &sound.channel_two.active);
             }
+
             break;
 
         case 0xFF1A:
@@ -1272,6 +1349,9 @@ void sound_write_reg(uint16_t a, uint8_t v)
             }
 
             break;
+
+/*        case 0xFF24:
+            break; */
 
         case 0xFF26:
 

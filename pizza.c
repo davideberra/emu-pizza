@@ -132,6 +132,7 @@ int main(int argc, char **argv)
                 {
                     case (SDLK_q): global_quit = 1; break;
                     case (SDLK_d): global_debug ^= 0x01; break;
+                    case (SDLK_s): global_slow_down = 1; break;
                     case (SDLK_w): global_window ^= 0x01; break;
                     case (SDLK_p): gameboy_set_pause(global_pause ^ 0x01); 
                                    break;

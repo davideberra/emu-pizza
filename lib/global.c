@@ -25,6 +25,8 @@ char global_window;
 char global_debug;
 char global_cgb;
 char global_double_speed;
+char global_slow_down;
+char global_record_audio;
 
 void global_init()
 {
@@ -34,5 +36,7 @@ void global_init()
     global_debug = 0;
     global_cgb = 0;
     global_double_speed = 0;
+    global_slow_down = 0;
+    global_record_audio = 0;
    //  global_started = 0;
 }

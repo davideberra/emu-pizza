@@ -189,8 +189,8 @@ typedef struct channel_square_s
     uint8_t  duty;
     uint8_t  duty_idx;
     uint8_t  envelope_cnt;
-    double   duty_cycles;
-    double   duty_cycles_cnt;
+    uint16_t duty_cycles;
+    uint16_t duty_cycles_cnt;
     uint32_t length;
     uint32_t frequency;
     int16_t  sample;
@@ -269,8 +269,8 @@ typedef struct sound_s
 
 } sound_t;
 
-#define SOUND_SAMPLES 2048
-#define SOUND_FREQ    44100
+#define SOUND_FREQ    48000
+#define SOUND_SAMPLES SOUND_FREQ / 10
 
 /* prototypes */
 uint8_t sound_read_reg(uint16_t a, uint8_t v);

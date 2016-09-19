@@ -137,6 +137,9 @@ void mmu_init(uint8_t c, uint8_t rn)
     mmu.dma_address = 0;
     mmu.rtc_mode = 0;
     time(&mmu.rtc_time);
+
+    /* reset memory */
+    bzero(memory, 65536);
 }
 
 /* init (alloc) system state.memory */
@@ -1099,8 +1102,6 @@ void mmu_restore_rtc(char *fn)
 
         /* read last saved time */
         fscanf(fp, "%ld", &mmu.rtc_time);
-
-        printf("LETTO TIME %ld\n", mmu.rtc_time);
 
         fclose(fp);
     }
