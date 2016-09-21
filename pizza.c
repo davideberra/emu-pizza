@@ -17,8 +17,10 @@
 
 */
 
+#include <errno.h>
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #include "cartridge.h"
 #include "gameboy.h"
@@ -55,6 +57,10 @@ int main(int argc, char **argv)
 
     /* init global variables */
     global_init();
+
+    /* set global folder */
+    snprintf(global_save_folder, sizeof(global_save_folder), "/tmp/str/save/");
+    __mkdirp(global_save_folder, S_IRWXU);
 
     /* first, load cartridge */
     char ret = cartridge_load(argv[1]);
@@ -130,10 +136,38 @@ int main(int argc, char **argv)
             case SDL_KEYDOWN:
                 switch (e.key.keysym.sym)
                 {
+                    case (SDLK_1): gameboy_set_pause(1);
+                                   gameboy_save_stat(0);
+                                   gameboy_set_pause(0);
+                                   break;
+                    case (SDLK_2): gameboy_set_pause(1);
+                                   gameboy_restore_stat(0); 
+                                   gameboy_set_pause(0);
+                                   break;
                     case (SDLK_q): global_quit = 1; break;
                     case (SDLK_d): global_debug ^= 0x01; break;
                     case (SDLK_s): global_slow_down = 1; break;
                     case (SDLK_w): global_window ^= 0x01; break;
+                    case (SDLK_PLUS): 
+                        if (global_emulation_speed != 
+                            GLOBAL_EMULATION_SPEED_DOUBLE) 
+                        {
+                            global_emulation_speed++; 
+                            cycles_change_emulation_speed();
+                            sound_change_emulation_speed();
+                        }
+
+                        break;
+                    case (SDLK_MINUS):
+                        if (global_emulation_speed !=
+                            GLOBAL_EMULATION_SPEED_HALF)
+                        {
+                            global_emulation_speed--;
+                            cycles_change_emulation_speed();
+                            sound_change_emulation_speed();
+                        }
+
+                        break;
                     case (SDLK_p): gameboy_set_pause(global_pause ^ 0x01); 
                                    break;
                     case (SDLK_m): mmu_dump_all(); break;
@@ -228,4 +262,84 @@ void cb()
                        
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
+}
+
+/*
+ *  Returns 1 if a directory has been created,
+ *  2 if it already existed, and 0 on failure.
+ */
+int __mkdirp (char *path, mode_t omode)
+{
+    struct stat sb;
+    mode_t numask, oumask;
+    int first, last, retval;
+    char *p;
+
+    p = path;
+    oumask = 0;
+    retval = 1;
+
+    if (p[0] == '/')        /* Skip leading '/'. */
+        ++p;
+
+    for (first = 1, last = 0; !last ; ++p)
+    {
+        if (p[0] == '\0')
+            last = 1;
+        else if (p[0] != '/')
+            continue;
+
+        *p = '\0';
+
+        if (!last && p[1] == '\0')
+            last = 1;
+
+        if (first)
+        {
+            oumask = umask(0);
+            numask = oumask & ~(S_IWUSR | S_IXUSR);
+            (void) umask(numask);
+            first = 0;
+        }
+
+        if (last)
+            (void) umask(oumask);
+
+        if (mkdir(path, last ? omode : S_IRWXU | S_IRWXG | S_IRWXO) < 0)
+        {
+            if (errno == EEXIST || errno == EISDIR)
+            {
+                if (stat(path, &sb) < 0)
+                {
+                    retval = 0;
+                    break;
+                }
+                else if (!S_ISDIR(sb.st_mode))
+                {
+                    if (last)
+                        errno = EEXIST;
+                    else
+                        errno = ENOTDIR;
+
+                    retval = 0;
+                    break;
+                }
+
+                if (last)
+                    retval = 2;
+            }
+            else
+            {
+                retval = 0;
+                break;
+            }
+        }
+        if (!last)
+            *p = '/';
+    }
+
+    if (!first && !last)
+        (void) umask(oumask);
+
+    return retval;
 }

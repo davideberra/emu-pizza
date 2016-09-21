@@ -24,6 +24,8 @@
 
 void serial_init();
 void serial_step();
+void serial_save_stat(FILE *fp);
+void serial_restore_stat(FILE *fp);
 
 typedef struct serial_ctrl_s
 { 

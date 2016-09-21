@@ -299,3 +299,70 @@ void gameboy_stop()
     /* shutdown semaphore limitator */
     cycles_term();
 }
+
+char gameboy_restore_stat(int idx)
+{
+    char path[256];
+
+    /* ensure i'm in pause */
+    gameboy_set_pause(1);
+
+    /* wait a little, just to ensure main loop enter in pause state */
+    usleep(100000);
+
+    /* build output file name */
+    snprintf(path, sizeof(path), "%s/%s.%d.stat", global_save_folder,
+                                                  global_rom_name, idx);
+
+    FILE *fp = fopen(path, "r+");
+
+    if (fp == NULL)
+        return 1;
+
+    /* restore CPU status */
+    fread(&state, 1, sizeof(z80_state_t), fp);
+
+    /* dump every module */
+    sound_restore_stat(fp);
+    gpu_restore_stat(fp);
+    serial_restore_stat(fp);
+    mmu_restore_stat(fp);
+
+    fclose(fp);
+
+    return 0;
+}
+
+char gameboy_save_stat(int idx)
+{
+    char path[256];
+
+    /* ensure i'm in pause */
+    gameboy_set_pause(1);
+
+    /* wait a little, just to ensure main loop enter in pause state */
+    usleep(100000);
+
+    /* build output file name */
+    snprintf(path, sizeof(path), "%s/%s.%d.stat", global_save_folder, 
+                                                  global_rom_name, idx);
+
+    FILE *fp = fopen(path, "w+");
+
+    if (fp == NULL)
+        return 1;
+
+    /* dump cpu status */
+    fwrite(&state, 1, sizeof(z80_state_t), fp);
+
+    /* dump every module */
+    sound_save_stat(fp);
+    gpu_save_stat(fp);
+    serial_save_stat(fp);
+    mmu_save_stat(fp);
+
+    fclose(fp);
+
+    return 0;
+}
+

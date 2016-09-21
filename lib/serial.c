@@ -22,62 +22,104 @@
 #include "serial.h"
 
 /* pointer to interrupt flags (handy) */
-interrupts_flags_t *serial_if;
+// interrupts_flags_t *serial_if;
 
 /* pointer to serial controller register */
-serial_ctrl_t *serial_ctrl;
+// serial_ctrl_t *serial_ctrl;
 
 /* pointer to FF01 data */
-uint8_t *serial_data;
+// uint8_t *serial_data;
+
+typedef struct serial_s {
+
+    /* pointer to interrupt flags (handy) */
+    interrupts_flags_t *ifp;
+
+    /* pointer to serial controller register */
+    serial_ctrl_t *ctrl;
+
+    /* pointer to FF01 data */
+    uint8_t *data;
+
+    /* sent bits */
+    uint8_t  bits_sent;
+
+    /* counter */
+    uint32_t cnt;
+
+} serial_t;
+
+serial_t serial;
 
 /* sent bits */
-uint8_t serial_bits_sent = 0;
+// uint8_t serial_bits_sent = 0;
 
-int totaru = 0;
+// int serial_cnt = 0;
 
+void serial_init_pointers()
+{
+    /* pointer to data to send/received */
+    serial.data = mmu_addr(0xFF01);
+
+    /* assign timer values to them memory addresses */
+    serial.ctrl = mmu_addr(0xFF02);
+
+    /* pointer to interrupt flags */
+    serial.ifp   = mmu_addr(0xFF0F);
+}
 
 void serial_init()
 {
-    /* pointer to data to send/received */
-    serial_data = mmu_addr(0xFF01);
-
-    /* assign timer values to them memory addresses */
-    serial_ctrl = mmu_addr(0xFF02);
-        
     /* pointer to interrupt flags */
-    serial_if   = mmu_addr(0xFF0F);
+    serial_init_pointers();    
+
+    /* init counters */
+    serial.cnt = 0;
+    serial.bits_sent = 0;
 }
 
 void serial_step()
 {
-    if (serial_ctrl->transfer_start && serial_ctrl->clock)
+    if (serial.ctrl->transfer_start && serial.ctrl->clock)
     {
-        totaru += 4;
+        serial.cnt += 4;
 
         /* TODO - check SGB mode, it could run at different clock */
-        if (totaru >= 256)
+        if (serial.cnt >= 256)
         {
             /* reset counter */
-            totaru = 0;
+            serial.cnt = 0;
 
             /* one bit more was sent - update FF01  */
-            *serial_data = (*serial_data << 1) | 0x01;
+            *(serial.data) = (*(serial.data) << 1) | 0x01;
 
             /* increase bit sent */
-            serial_bits_sent++;
+            serial.bits_sent++;
 
             /* reached 8 bits? */
-            if (serial_bits_sent == 8)
+            if (serial.bits_sent == 8)
             {
                 /* reset counter */
-                serial_bits_sent = 0;
+                serial.bits_sent = 0;
 
                 /* reset transfer_start flag to yell I'M DONE */
-                serial_ctrl->transfer_start = 0;
+                serial.ctrl->transfer_start = 0;
 
                 /* and finally, trig the fucking interrupt */
-                serial_if->serial_io = 1;
+                serial.ifp->serial_io = 1;
             }
         }
     }
+}
+
+void serial_save_stat(FILE *fp)
+{
+    fwrite(&serial, 1, sizeof(serial_t), fp);
+}
+
+void serial_restore_stat(FILE *fp)
+{
+    fread(&serial, 1, sizeof(serial_t), fp);
+
+    serial_init_pointers();
 }

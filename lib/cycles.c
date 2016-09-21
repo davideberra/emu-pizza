@@ -49,8 +49,8 @@ uint32_t          cycles_cnt;
 /* CPU clock */
 uint32_t          cycles_clock;
 
-
-uint16_t          cycles_mask;
+/* handy for .... pfff */
+uint32_t          cycles_mask;
 
 #define CYCLES_PAUSES 128
 
@@ -67,6 +67,25 @@ void cycles_set_speed(char dbl)
         cycles_mask = 0x7FFF;
 } 
 
+/* set emulation speed */
+void cycles_change_emulation_speed()
+{
+    switch (global_emulation_speed)
+    {
+        case GLOBAL_EMULATION_SPEED_HALF:
+            cycles_mask = ((0x3FFF << global_cpu_double_speed) | 
+                           global_cpu_double_speed);
+            break;
+        case GLOBAL_EMULATION_SPEED_NORMAL:
+            cycles_mask = ((0x7FFF << global_cpu_double_speed) | 
+                           global_cpu_double_speed);
+            break;
+        case GLOBAL_EMULATION_SPEED_DOUBLE:
+            cycles_mask = ((0xFFFF << global_cpu_double_speed) | 
+                           global_cpu_double_speed);
+            break;
+    }
+}
 
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
 void cycles_step()

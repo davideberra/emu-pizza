@@ -26,6 +26,7 @@
 extern uint32_t          cycles_clock;
 
 /* prototypes */
+void cycles_change_emulation_speed();
 char cycles_init();
 void cycles_set_speed(char dbl);
 char cycles_start_timer();

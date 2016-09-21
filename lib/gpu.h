@@ -20,6 +20,7 @@
 #ifndef __GPU_HDR__
 #define __GPU_HDR__
 
+#include <stdio.h>
 #include <stdint.h>
 
 /* callback function */ 
@@ -28,10 +29,14 @@ typedef void (*gpu_frame_ready_cb_t) ();
 /* prototypes */
 uint16_t *gpu_get_frame_buffer();
 void      gpu_init(gpu_frame_ready_cb_t cb);
+void      gpu_restore_stat(FILE *fp);
+void      gpu_save_stat(FILE *fp);
+void      gpu_set_speed(char speed);
 void      gpu_step();
 void      gpu_toggle(uint8_t state);
 void      gpu_write_reg(uint16_t a, uint8_t v);
 uint8_t   gpu_read_reg(uint16_t a);
+
 
 /* Gameboy LCD Control - R/W accessing 0xFF40 address */
 typedef struct gpu_lcd_ctrl_s
@@ -79,9 +84,15 @@ typedef struct gpu_s
     /* clocks counter   */
     uint32_t  clocks;
 
+    /* gpu step span */
+    uint8_t   step;
+
     /* window last drawn lines */
     uint8_t   window_last_ly;
     uint8_t   window_skipped_lines;
+
+    /* frame counter */
+    uint16_t  frame_counter;
 
     /* BG palette       */
     uint16_t  bg_palette[4]; 

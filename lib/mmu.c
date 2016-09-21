@@ -48,13 +48,13 @@
 */
 
 /* cartridge type */
-uint8_t carttype;
+// uint8_t carttype;
 
 /* number of switchable roms */
-uint8_t roms;
+// uint8_t roms;
 
 /* system memory (!= cartridge memory) */
-uint8_t memory[65536];
+// uint8_t memory[65536];
 
 /* cartridge memory (max 8MB) */
 uint8_t cart_memory[1 << 22];
@@ -64,11 +64,11 @@ uint8_t *ram;
 uint32_t ram_sz;
 
 /* current bank in case of MBC controller */
-uint8_t rom_current_bank = 1;
-uint8_t ram_current_bank = 0;
+// uint8_t rom_current_bank = 1;
+// uint8_t ram_current_bank = 0;
 
 /* banking mode - 0 ROM, 1 RAM */
-uint8_t banking = 0;
+// uint8_t banking = 0;
 
 /* DMA counter and address */
 // uint16_t mmu_dma_address = 0;
@@ -77,6 +77,9 @@ uint8_t banking = 0;
 
 typedef struct mmu_s {
 
+    /* main 64K of memory */
+    uint8_t memory[65536];
+    
     /* vram in standby */
     uint8_t vram0[0x2000];
     uint8_t vram1[0x2000];
@@ -88,6 +91,18 @@ typedef struct mmu_s {
     uint8_t ram_internal[0x2000];
     uint8_t ram_external_enabled;
     uint8_t ram_current_bank;
+
+    /* cartridge type */
+    uint8_t carttype;
+
+    /* number of switchable roms */
+    uint8_t roms;
+
+    /* current ROM bank */
+    uint8_t rom_current_bank;
+
+    /* type of banking */
+    uint8_t banking;
 
     /* working RAM (only CGB) */
     uint8_t wram[0x8000];
@@ -119,15 +134,15 @@ mmu_t mmu;
 /* init (alloc) system state.memory */
 void mmu_init(uint8_t c, uint8_t rn)
 {
-    rom_current_bank = 0x01;
-    ram_current_bank = 0x00;
+    mmu.rom_current_bank = 0x01;
+    mmu.ram_current_bank = 0x00;
 
     /* set ram to NULL */
     ram = NULL;
 
     /* save carttype and qty of ROM blocks */
-    carttype = c;
-    roms = rn;
+    mmu.carttype = c;
+    mmu.roms = rn;
 
     mmu.vram_idx = 0;
     mmu.wram_current_bank = 1;
@@ -139,7 +154,7 @@ void mmu_init(uint8_t c, uint8_t rn)
     time(&mmu.rtc_time);
 
     /* reset memory */
-    bzero(memory, 65536);
+    bzero(mmu.memory, 65536);
 }
 
 /* init (alloc) system state.memory */
@@ -163,7 +178,7 @@ void mmu_step()
         /* enough cycles passed? */
         if (mmu.dma_cycles == 0)
         {
-            memcpy(&memory[0xFE00], &memory[mmu.dma_address], 160);
+            memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
 
             /* reset address */
             mmu.dma_address = 0x0000;
@@ -177,20 +192,20 @@ void mmu_step()
         if (mmu.hdma_transfer_mode)
         {
             /* transfer when line is changed and we're into HBLANK phase */
-            if (memory[0xFF44] < 143 && 
-                mmu.hdma_current_line != memory[0xFF44] && 
-                (memory[0xFF41] & 0x03) == 0x00)
+            if (mmu.memory[0xFF44] < 143 && 
+                mmu.hdma_current_line != mmu.memory[0xFF44] && 
+                (mmu.memory[0xFF41] & 0x03) == 0x00)
             {
                 /* update current line */
-                mmu.hdma_current_line = memory[0xFF44];
+                mmu.hdma_current_line = mmu.memory[0xFF44];
 
                 /* copy 0x10 bytes */
                 if (mmu.vram_idx)
                     memcpy(mmu_addr_vram1() + mmu.hdma_dst_address - 0x8000,
-                           &memory[mmu.hdma_src_address], 0x10);
+                           &mmu.memory[mmu.hdma_src_address], 0x10);
                 else
                     memcpy(mmu_addr_vram0() + mmu.hdma_dst_address - 0x8000,
-                           &memory[mmu.hdma_src_address], 0x10);
+                           &mmu.memory[mmu.hdma_src_address], 0x10);
 
                 /* decrease bytes to transfer */
                 mmu.hdma_to_transfer -= 0x10;
@@ -206,14 +221,14 @@ void mmu_step()
 /* load data in a certain address */
 void mmu_load(uint8_t *data, size_t sz, uint16_t a)
 {
-    memcpy(&memory[a], data, sz);
+    memcpy(&mmu.memory[a], data, sz);
 }
 
 /* load full cartridge */
 void mmu_load_cartridge(uint8_t *data, size_t sz)
 {
     /* copy max 32k into working memory */
-    memcpy(memory, data, 2 << 14);
+    memcpy(mmu.memory, data, 2 << 14);
 
     /* copy full cartridge */
     memcpy(cart_memory, data, sz);
@@ -228,7 +243,7 @@ void mmu_move(uint16_t d, uint16_t s)
 /* return absolute memory address */
 void *mmu_addr(uint16_t a)
 {
-    return (void *) &memory[a];
+    return (void *) &mmu.memory[a];
 }
 
 /* return absolute memory address */
@@ -247,9 +262,9 @@ void *mmu_addr_vram1()
 uint8_t mmu_read_no_cyc(uint16_t a)
 {
     if (a >= 0xE000 && a <= 0xFDFF)
-        return memory[a - 0x2000];
+        return mmu.memory[a - 0x2000];
 
-    return memory[a];
+    return mmu.memory[a];
 }
 
 /* read 8 bit data from a memory addres */
@@ -260,15 +275,15 @@ uint8_t mmu_read(uint16_t a)
 
     /* joypad reading */
     if (a == 0xFF00)
-        return input_get_keys(memory[a]);
+        return input_get_keys(mmu.memory[a]);
 
     /* RAM mirror */
     if (a >= 0xE000 && a <= 0xFDFF)
-        return memory[a - 0x2000];
+        return mmu.memory[a - 0x2000];
 
     /* changes on sound registers? */
     if (a >= 0xFF10 && a <= 0xFF3F)
-        return sound_read_reg(a, memory[a]);
+        return sound_read_reg(a, mmu.memory[a]);
 
     /* only CBG registers */
     if (global_cgb)
@@ -323,13 +338,13 @@ uint8_t mmu_read(uint16_t a)
         }
     }
 
-    return memory[a];
+    return mmu.memory[a];
 }
 
 /* write 16 bit block on a memory address (no cycles affected) */
 void mmu_write_no_cyc(uint16_t a, uint8_t v)
 {
-    memory[a] = v;
+    mmu.memory[a] = v;
 }
 
 /* write 16 bit block on a memory address */
@@ -449,17 +464,17 @@ void mmu_write(uint16_t a, uint8_t v)
 
             /* save current bank */
             memcpy(&mmu.wram[0x1000 * mmu.wram_current_bank],
-                   &memory[0xD000], 0x1000);
+                   &mmu.memory[0xD000], 0x1000);
 
             mmu.wram_current_bank = new;
 
             /* move new ram bank */
-            memcpy(&memory[0xD000],
+            memcpy(&mmu.memory[0xD000],
                    &mmu.wram[0x1000 * mmu.wram_current_bank],
                    0x1000);
 
             /* save current bank */
-            memory[0xFF70] = new;
+            mmu.memory[0xFF70] = new;
 
             return;
         }
@@ -470,7 +485,7 @@ void mmu_write(uint16_t a, uint8_t v)
             mmu.vram_idx = (v & 0x01);
 
             /* save current VRAM bank */
-            memory[0xFF4F] = mmu.vram_idx;
+            mmu.memory[0xFF4F] = mmu.vram_idx;
 
             return;
         }
@@ -480,13 +495,13 @@ void mmu_write(uint16_t a, uint8_t v)
     if (a < 0x8000)
     {
         /* return in case of ONLY ROM */
-        if (carttype == 0x00)
+        if (mmu.carttype == 0x00)
             return;
 
         /* TODO - MBC strategies */
-        uint8_t b = rom_current_bank;
+        uint8_t b = mmu.rom_current_bank;
 
-        switch (carttype)
+        switch (mmu.carttype)
         {
             /* MBC1 */
             case 0x01: 
@@ -496,16 +511,16 @@ void mmu_write(uint16_t a, uint8_t v)
                 if (a >= 0x2000 && a <= 0x3FFF) 
                 {
                     /* reset 5 bits */
-                    b = rom_current_bank & 0xE0;
+                    b = mmu.rom_current_bank & 0xE0;
 
                     /* set them with new value */
                     b |= v & 0x1F;
 
                     /* doesn't fit on max rom number? */
-                    if (b > (2 << roms))
+                    if (b > (2 << mmu.roms))
                     {
                         /* filter result to get a value < max rom number */
-                        b %= (2 << roms);
+                        b %= (2 << mmu.roms);
                     }
 
                     /* 0x00 is not valid, switch it to 0x01 */
@@ -515,19 +530,19 @@ void mmu_write(uint16_t a, uint8_t v)
                 else if (a >= 0x4000 && a <= 0x5FFF)
                 {
                     /* ROM banking? it's about 2 higher bits */
-                    if (banking == 0)
+                    if (mmu.banking == 0)
                     {
                         /* reset 5 bits */
-                        b = rom_current_bank & 0x1F;
+                        b = mmu.rom_current_bank & 0x1F;
 
                         /* set them with new value */
                         b |= (v << 5);
 
                         /* doesn't fit on max rom number? */
-                        if (b > (2 << roms))
+                        if (b > (2 << mmu.roms))
                         {
                             /* filter result to get a value < max rom number */
-                            b %= (2 << roms);
+                            b %= (2 << mmu.roms);
                         }
                     }
                     else
@@ -535,20 +550,20 @@ void mmu_write(uint16_t a, uint8_t v)
                         if ((0x2000 * v) < ram_sz)
                         { 
                             /* save current bank */
-                            memcpy(&ram[0x2000 * ram_current_bank], 
-                                   &memory[0xA000], 0x2000);
+                            memcpy(&ram[0x2000 * mmu.ram_current_bank], 
+                                   &mmu.memory[0xA000], 0x2000);
   
-                            ram_current_bank = v;
+                            mmu.ram_current_bank = v;
 
                             /* move new ram bank */
-                            memcpy(&memory[0xA000], 
-                                   &ram[0x2000 * ram_current_bank], 
+                            memcpy(&mmu.memory[0xA000], 
+                                   &ram[0x2000 * mmu.ram_current_bank], 
                                    0x2000);
                         }
                     }
                 }
                 else if (a >= 0x6000 && a <= 0x7FFF)
-                    banking = v;
+                    mmu.banking = v;
 
                 break;
 
@@ -584,11 +599,11 @@ void mmu_write(uint16_t a, uint8_t v)
 
                         /* save current bank */
                         memcpy(mmu.ram_internal,
-                               &memory[0xA000], 0x2000);
+                               &mmu.memory[0xA000], 0x2000);
 
                         /* restore external ram bank */
-                        memcpy(&memory[0xA000],
-                               &ram[0x2000 * ram_current_bank],
+                        memcpy(&mmu.memory[0xA000],
+                               &ram[0x2000 * mmu.ram_current_bank],
                                0x2000);
 
                         /* set external RAM eanbled flag */
@@ -604,11 +619,11 @@ void mmu_write(uint16_t a, uint8_t v)
                             return;
 
                         /* save current bank */
-                        memcpy(&ram[0x2000 * ram_current_bank],
-                               &memory[0xA000], 0x2000);
+                        memcpy(&ram[0x2000 * mmu.ram_current_bank],
+                               &mmu.memory[0xA000], 0x2000);
 
                         /* restore external ram bank */
-                        memcpy(&memory[0xA000],
+                        memcpy(&mmu.memory[0xA000],
                                mmu.ram_internal, 0x2000);
 
                         /* clear external RAM eanbled flag */
@@ -621,10 +636,10 @@ void mmu_write(uint16_t a, uint8_t v)
                     b = v & 0x7F;
 
                     /* doesn't fit on max rom number? */
-                    if (b > (2 << roms))
+                    if (b > (2 << mmu.roms))
                     {
                         /* filter result to get a value < max rom number */
-                        b %= (2 << roms);
+                        b %= (2 << mmu.roms);
                     }
 
                     /* 0x00 is not valid, switch it to 0x01 */
@@ -642,14 +657,14 @@ void mmu_write(uint16_t a, uint8_t v)
                         if ((0x2000 * (v & 0x0f)) < ram_sz)
                         {
                             /* save current bank */
-                            memcpy(&ram[0x2000 * ram_current_bank],
-                                   &memory[0xA000], 0x2000);
+                            memcpy(&ram[0x2000 * mmu.ram_current_bank],
+                                   &mmu.memory[0xA000], 0x2000);
   
-                            ram_current_bank = v & 0x0f;
+                            mmu.ram_current_bank = v & 0x0f;
 
                             /* move new ram bank */
-                            memcpy(&memory[0xA000],
-                                   &ram[0x2000 * ram_current_bank],
+                            memcpy(&mmu.memory[0xA000],
+                                   &ram[0x2000 * mmu.ram_current_bank],
                                    0x2000);
                         }
                     }
@@ -681,7 +696,8 @@ void mmu_write(uint16_t a, uint8_t v)
                 {
                     if (v == 0x0A)
                     {
-                        /* we got external RAM? some stupid game try to do shit */
+                        /* we got external RAM? some stupid game try */
+                        /* to access it despite it doesn't have it   */
                         if (ram_sz == 0)
                             return;
 
@@ -691,11 +707,11 @@ void mmu_write(uint16_t a, uint8_t v)
 
                         /* save current bank */
                         memcpy(mmu.ram_internal,
-                               &memory[0xA000], 0x2000);
+                               &mmu.memory[0xA000], 0x2000);
 
                         /* restore external ram bank */
-                        memcpy(&memory[0xA000],
-                               &ram[0x2000 * ram_current_bank],
+                        memcpy(&mmu.memory[0xA000],
+                               &ram[0x2000 * mmu.ram_current_bank],
                                0x2000);
 
                         /* set external RAM eanbled flag */
@@ -715,11 +731,11 @@ void mmu_write(uint16_t a, uint8_t v)
                             return;
 
                         /* save current bank */
-                        memcpy(&ram[0x2000 * ram_current_bank], 
-                               &memory[0xA000], 0x2000);
+                        memcpy(&ram[0x2000 * mmu.ram_current_bank], 
+                               &mmu.memory[0xA000], 0x2000);
 
                         /* restore external ram bank */
-                        memcpy(&memory[0xA000],
+                        memcpy(&mmu.memory[0xA000],
                                mmu.ram_internal, 0x2000);
 
                         /* clear external RAM eanbled flag */
@@ -729,25 +745,25 @@ void mmu_write(uint16_t a, uint8_t v)
                 if (a >= 0x2000 && a <= 0x2FFF)
                 {
                     /* set them with new value */
-                    b = (rom_current_bank & 0xFF00) | v;
+                    b = (mmu.rom_current_bank & 0xFF00) | v;
 
                     /* doesn't fit on max rom number? */
-                    if (b > (2 << roms))
+                    if (b > (2 << mmu.roms))
                     {
                         /* filter result to get a value < max rom number */
-                        b %= (2 << roms);
+                        b %= (2 << mmu.roms);
                     }
                 }
                 else if (a >= 0x3000 && a <= 0x3FFF)
                 {
                     /* set them with new value */
-                    b = (rom_current_bank & 0x00FF) | ((v & 0x01) << 8);
+                    b = (mmu.rom_current_bank & 0x00FF) | ((v & 0x01) << 8);
 
                     /* doesn't fit on max rom number? */
-                    if (b > (2 << roms))
+                    if (b > (2 << mmu.roms))
                     {
                         /* filter result to get a value < max rom number */
-                        b %= (2 << roms);
+                        b %= (2 << mmu.roms);
                     }
                 }
                 else if (a >= 0x4000 && a <= 0x5FFF)
@@ -755,14 +771,14 @@ void mmu_write(uint16_t a, uint8_t v)
                     if ((0x2000 * (v & 0x0f)) < ram_sz)
                     {
                         /* save current bank */
-                        memcpy(&ram[0x2000 * ram_current_bank],
-                               &memory[0xA000], 0x2000);
+                        memcpy(&ram[0x2000 * mmu.ram_current_bank],
+                               &mmu.memory[0xA000], 0x2000);
 
-                        ram_current_bank = v & 0x0f;
+                        mmu.ram_current_bank = v & 0x0f;
 
                         /* move new ram bank */
-                        memcpy(&memory[0xA000],
-                               &ram[0x2000 * ram_current_bank],
+                        memcpy(&mmu.memory[0xA000],
+                               &ram[0x2000 * mmu.ram_current_bank],
                                0x2000);
                     }
                 }
@@ -772,13 +788,13 @@ void mmu_write(uint16_t a, uint8_t v)
         }
 
         /* need to switch? */
-        if (b != rom_current_bank)
+        if (b != mmu.rom_current_bank)
         {
              /* copy from cartridge rom to GB switchable bank area */
-             memcpy(&memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+             memcpy(&mmu.memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
 
              /* save new current bank */
-             rom_current_bank = b;
+             mmu.rom_current_bank = b;
         }
 
         return; 
@@ -798,28 +814,28 @@ void mmu_write(uint16_t a, uint8_t v)
         /* mirror area */
         if (a >= 0xE000 && a <= 0xFDFF)
         {
-            memory[a - 0x2000] = v;
+            mmu.memory[a - 0x2000] = v;
             return;
         } 
 
         /* resetting timer DIV */
         if (a == 0xFF04)
         {
-            memory[a] = 0x00;
+            mmu.memory[a] = 0x00;
             return;
         }
 
         /* LCD turned on/off? */
         if (a == 0xFF40)
         {
-            if ((v ^ memory[0xFF40]) & 0x80)
+            if ((v ^ mmu.memory[0xFF40]) & 0x80)
                 gpu_toggle(v);
         }
 
         /* only 5 high bits are writable */
         if (a == 0xFF41)
         {
-            memory[a] = (memory[a] & 0x07) | (v & 0xf8);
+            mmu.memory[a] = (mmu.memory[a] & 0x07) | (v & 0xf8);
             return;
         }
             
@@ -838,18 +854,19 @@ void mmu_write(uint16_t a, uint8_t v)
                     /* wanna switch speed? */
                     if (v & 0x01)
                     {
-                        global_double_speed ^= 0x01;
+                        global_cpu_double_speed ^= 0x01;
 
                         /* update new clock */ 
                         // cycles_clock = 4194304 << global_double_speed;
                         cycles_set_speed(1);
                         sound_set_speed(1);
+                        gpu_set_speed(1);
 
                         /* save into memory i'm working at double speed */
-                        if (global_double_speed)
-                            memory[a] = 0x80;
+                        if (global_cpu_double_speed)
+                            mmu.memory[a] = 0x80;
                         else 
-                            memory[a] = 0x00;
+                            mmu.memory[a] = 0x00;
                     }
  
                     return;
@@ -919,11 +936,13 @@ void mmu_write(uint16_t a, uint8_t v)
                         if (mmu.vram_idx)
                             memcpy(mmu_addr_vram1() + 
                                    (mmu.hdma_dst_address - 0x8000), 
-                                   &memory[mmu.hdma_src_address], to_transfer);
+                                   &mmu.memory[mmu.hdma_src_address], 
+                                   to_transfer);
                         else
                             memcpy(mmu_addr_vram0() + 
                                    (mmu.hdma_dst_address - 0x8000), 
-                                   &memory[mmu.hdma_src_address], to_transfer);
+                                   &mmu.memory[mmu.hdma_src_address], 
+                                   to_transfer);
 
                         /* reset to_transfer var */
                         mmu.hdma_to_transfer = 0;
@@ -938,7 +957,7 @@ void mmu_write(uint16_t a, uint8_t v)
         }
 
         /* finally set memory byte with data */
-        memory[a] = v;
+        mmu.memory[a] = v;
 
         /* DMA access */
         if (a == 0xFF46)
@@ -951,7 +970,7 @@ void mmu_write(uint16_t a, uint8_t v)
         }
     }
     else
-        memory[a] = v; 
+        mmu.memory[a] = v; 
 }
 
 /* read 16 bit data from a memory addres */
@@ -961,14 +980,14 @@ unsigned int mmu_read_16(uint16_t a)
     cycles_step();
     cycles_step();
 
-    return (memory[a] | (memory[a + 1] << 8));
+    return (mmu.memory[a] | (mmu.memory[a + 1] << 8));
 }
 
 /* write 16 bit block on a memory address */
 void mmu_write_16(uint16_t a, uint16_t v)
 {
-    memory[a] = (uint8_t) (v & 0x00ff);
-    memory[a + 1] = (uint8_t) (v >> 8);
+    mmu.memory[a] = (uint8_t) (v & 0x00ff);
+    mmu.memory[a + 1] = (uint8_t) (v >> 8);
 
     /* 16 bit write = +8 cycles */
     cycles_step();
@@ -978,18 +997,18 @@ void mmu_write_16(uint16_t a, uint16_t v)
 void mmu_save_ram(char *fn)
 {
     /* save only if cartridge got a battery */
-    if (carttype == 0x03 || 
-        carttype == 0x06 ||
-        carttype == 0x09 ||
-        carttype == 0x0d ||
-        carttype == 0x0f ||
-        carttype == 0x10 ||
-        carttype == 0x13 ||
-        carttype == 0x17 ||
-        carttype == 0x1b ||
-        carttype == 0x1e ||
-        carttype == 0x22 ||
-        carttype == 0xff)
+    if (mmu.carttype == 0x03 || 
+        mmu.carttype == 0x06 ||
+        mmu.carttype == 0x09 ||
+        mmu.carttype == 0x0d ||
+        mmu.carttype == 0x0f ||
+        mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13 ||
+        mmu.carttype == 0x17 ||
+        mmu.carttype == 0x1b ||
+        mmu.carttype == 0x1e ||
+        mmu.carttype == 0x22 ||
+        mmu.carttype == 0xff)
     {
         FILE *fp = fopen(fn, "w+");
 
@@ -1002,7 +1021,7 @@ void mmu_save_ram(char *fn)
         if (ram_sz <= 0x2000)
         {
             /* no need to put togheter pieces of ram banks */
-            fwrite(&memory[0xA000], ram_sz, 1, fp);
+            fwrite(&mmu.memory[0xA000], ram_sz, 1, fp);
         }
         else
         {
@@ -1010,11 +1029,11 @@ void mmu_save_ram(char *fn)
 
             /* save current used bank */
             if (mmu.ram_external_enabled)
-                memcpy(&ram[0x2000 * ram_current_bank],
-                       &memory[0xA000], 0x2000);
+                memcpy(&ram[0x2000 * mmu.ram_current_bank],
+                       &mmu.memory[0xA000], 0x2000);
             else
                 memcpy(mmu.ram_internal,
-                       &memory[0xA000], 0x2000);
+                       &mmu.memory[0xA000], 0x2000);
             
             /* dump the entire internal + external RAM */
             fwrite(mmu.ram_internal, 0x2000, 1, fp); 
@@ -1028,8 +1047,8 @@ void mmu_save_ram(char *fn)
 void mmu_save_rtc(char *fn)
 {
     /* save only if cartridge got a battery */
-    if (carttype == 0x10 ||
-        carttype == 0x13)
+    if (mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13)
     {
         FILE *fp = fopen(fn, "w+");
 
@@ -1046,18 +1065,18 @@ void mmu_save_rtc(char *fn)
 void mmu_restore_ram(char *fn)
 {   
     /* save only if cartridge got a battery */
-    if (carttype == 0x03 ||
-        carttype == 0x06 ||
-        carttype == 0x09 ||
-        carttype == 0x0d ||
-        carttype == 0x0f ||
-        carttype == 0x10 ||
-        carttype == 0x13 ||
-        carttype == 0x17 ||
-        carttype == 0x1b ||
-        carttype == 0x1e ||
-        carttype == 0x22 ||
-        carttype == 0xff)
+    if (mmu.carttype == 0x03 ||
+        mmu.carttype == 0x06 ||
+        mmu.carttype == 0x09 ||
+        mmu.carttype == 0x0d ||
+        mmu.carttype == 0x0f ||
+        mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13 ||
+        mmu.carttype == 0x17 ||
+        mmu.carttype == 0x1b ||
+        mmu.carttype == 0x1e ||
+        mmu.carttype == 0x22 ||
+        mmu.carttype == 0xff)
     {
         FILE *fp = fopen(fn, "r+");
 
@@ -1068,7 +1087,7 @@ void mmu_restore_ram(char *fn)
         if (ram_sz <= 0x2000)
         {
             /* no need to put togheter pieces of ram banks */
-            fread(&memory[0xA000], ram_sz, 1, fp);
+            fread(&mmu.memory[0xA000], ram_sz, 1, fp);
         }
         else
         {
@@ -1077,7 +1096,7 @@ void mmu_restore_ram(char *fn)
             fread(ram, ram_sz, 1, fp);
 
             /* copy internal RAM to 0xA000 address */
-            memcpy(&memory[0xA000], mmu.ram_internal, 0x2000);
+            memcpy(&mmu.memory[0xA000], mmu.ram_internal, 0x2000);
         }
 
         fclose(fp);
@@ -1087,8 +1106,8 @@ void mmu_restore_ram(char *fn)
 void mmu_restore_rtc(char *fn)
 {
     /* save only if cartridge got a battery */
-    if (carttype == 0x10 ||
-        carttype == 0x13) 
+    if (mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13) 
     {
         FILE *fp = fopen(fn, "r+");
 
@@ -1117,7 +1136,7 @@ void mmu_dump_all()
     {
         if ((i & 0x0f) == 0x00)
             printf("\n%04x: ", i);
-        printf(" %02x", memory[i]);
+        printf(" %02x", mmu.memory[i]);
     }
 
     if (global_cgb)
@@ -1139,11 +1158,7 @@ void mmu_dump_all()
                 printf("\n%04x: ", i);
             printf(" %02x", mmu.vram1[i]);
         }
-
-
     }
-
-
 }
 
 void mmu_term()
@@ -1153,4 +1168,20 @@ void mmu_term()
         free(ram);
         ram = NULL;
     }
+}
+
+void mmu_save_stat(FILE *fp)
+{
+    fwrite(&mmu, 1, sizeof(mmu_t), fp);
+
+    if (ram_sz)
+        fwrite(ram, 1, ram_sz, fp);
+}
+
+void mmu_restore_stat(FILE *fp)
+{
+    fread(&mmu, 1, sizeof(mmu_t), fp);
+
+    if (ram_sz)
+        fread(ram, 1, ram_sz, fp);
 }

@@ -44,6 +44,8 @@ void          mmu_save_ram(char *fn);
 void          mmu_save_rtc(char *fn);
 void          mmu_restore_ram(char *fn);
 void          mmu_restore_rtc(char *fn);
+void          mmu_restore_stat(FILE *fp);
+void          mmu_save_stat(FILE *fp);
 void          mmu_term();
 
 #endif

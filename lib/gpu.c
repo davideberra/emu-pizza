@@ -74,12 +74,6 @@ void gpu_draw_sprite_line(gpu_oam_t *oam,
 void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
                           uint8_t frame_y, uint8_t line);
 
-/* as the name says.... */
-int gpu_magnify_rate = 3;
-
-/* total cycles */
-uint32_t gpu_total_cycles;
-
 /* 2 bit to 8 bit color lookup */
 static uint16_t gpu_color_lookup[] = { 0xFFFF, 0xAD55, 0x52AA, 0x0000 };
 
@@ -90,12 +84,9 @@ gpu_frame_ready_cb_t gpu_frame_ready_cb;
 gpu_t gpu;
 
 
-/* init GPU states */
-void gpu_init(gpu_frame_ready_cb_t cb)
+/* init pointers */
+void gpu_init_pointers()
 {
-    /* reset gpu structure */
-    bzero(&gpu, sizeof(gpu_t));
-
     /* make gpu field points to the related memory area */
     gpu.lcd_ctrl   = mmu_addr(0xFF40);
     gpu.lcd_status = mmu_addr(0xFF41);
@@ -106,10 +97,23 @@ void gpu_init(gpu_frame_ready_cb_t cb)
     gpu.ly         = mmu_addr(0xFF44);
     gpu.lyc        = mmu_addr(0xFF45);
     gpu_if         = mmu_addr(0xFF0F);
-  
+}
+
+/* init GPU states */
+void gpu_init(gpu_frame_ready_cb_t cb)
+{
+    /* reset gpu structure */
+    bzero(&gpu, sizeof(gpu_t));
+
+    /* init memory pointers */
+    gpu_init_pointers();
+
     /* init counters */ 
     gpu.clocks = 0;
-    gpu_total_cycles = 0;
+    gpu.frame_counter = 0;
+ 
+    /* step for normal CPU speed */
+    gpu.step = 4;
 
     /* init palette */
     memcpy(gpu.bg_palette, gpu_color_lookup, sizeof(uint16_t) * 4);
@@ -145,6 +149,17 @@ void gpu_toggle(uint8_t state)
 void gpu_draw_frame()
 {
     int i;
+
+    /* reset priority matrix */
+//    bzero(gpu.priority, 160 * 144);
+//    bzero(gpu.palette_idx, 160 * 144);
+
+    /* is it the case to push samples? */
+    if ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
+        (gpu.frame_counter & 0x01) != 0) ||
+        (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
+        (gpu.frame_counter & 0x03) != 0))
+        return;
 
     /* simulate shitty gameboy response time of LCD                 */
     /* by calculating an average between current and previous frame */
@@ -192,6 +207,13 @@ void gpu_draw_line(uint8_t line)
     
     /* avoid mess */
     if (line > 144)
+        return;
+
+    /* is it the case to push samples? */
+    if ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
+        (gpu.frame_counter & 0x01) != 0) ||
+        (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
+        (gpu.frame_counter & 0x03) != 0))
         return;
 
     /* gotta show BG? Answer is always YES in case of Gameboy Color */
@@ -614,7 +636,14 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
     int16_t  tile_ptr;
     uint16_t *palette;
     uint8_t *tiles;
-   
+  
+    /* is it the case to push samples? */
+/*    if ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
+        (gpu.frame_counter & 0x01) != 0) ||
+        (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
+        (gpu.frame_counter & 0x03) != 0))
+        return; */
+ 
     /* REMEMBER! position of sprites is relative to the visible screen area */
     /* ... and y is shifted by 16 pixels, x by 8                            */
     y = oam->y - 16;
@@ -762,10 +791,10 @@ void gpu_step()
         return;
 
     /* update clock counter */
-    if (global_double_speed)
-        gpu.clocks += 2;
-    else
-        gpu.clocks += 4;
+//    if (global_double_speed)
+      gpu.clocks += gpu.step;
+//    else
+//        gpu.clocks += 4;
 
     /* take different action based on current state */
     switch((*gpu.lcd_status).mode)
@@ -1062,3 +1091,24 @@ void gpu_write_reg(uint16_t a, uint8_t v)
 
     }
 }
+
+void gpu_set_speed(char speed)
+{
+    if (speed == 1)
+        gpu.step = 2;
+    else
+        gpu.step = 4;
+}
+
+void gpu_save_stat(FILE *fp)
+{
+    fwrite(&gpu, 1, sizeof(gpu_t), fp);
+}
+
+void gpu_restore_stat(FILE *fp)
+{
+    fread(&gpu, 1, sizeof(gpu_t), fp);
+
+    gpu_init_pointers();
+}
+

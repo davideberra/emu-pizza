@@ -20,6 +20,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
+#include <libgen.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include "global.h"
 #include "mmu.h"
@@ -30,6 +33,9 @@ uint8_t rom[2 << 24];
 /* battery backed RAM & RTC*/
 char file_sav[1024];
 char file_rtc[1024];
+
+/* internal use prototype */
+int __mkdirp (char *path, mode_t omode);
 
 
 /* guess what              */
@@ -149,17 +155,16 @@ char cartridge_load(char *file_gb) {
         case 0x05: mmu_init_ram(1 << 16); printf("64 kB\n"); break;
     }
 
-    /* load BIOS at 0x0000 address of system memory */
-//    mmu_load(bios, 0x100, 0x0000);
-
-    /* load ROM at 0x0100 address of system memory */
-//    mmu_load(&rom[0x0100], 0x100, 0x0100);
+    /* save base name of the rom */
+    strlcpy(global_rom_name, basename(file_gb), 256);
 
     /* build file.sav */
-    snprintf(file_sav, sizeof(file_sav), "%s.sav", file_gb);
+    snprintf(file_sav, sizeof(file_sav), "%s/%s.sav", 
+                                         global_save_folder, global_rom_name);
 
     /* build file.rtc */
-    snprintf(file_rtc, sizeof(file_rtc), "%s.rtc", file_gb);
+    snprintf(file_rtc, sizeof(file_rtc), "%s/%s.rtc", 
+                                         global_save_folder, global_rom_name);
 
     /* restore saved RAM if it's the case */
     mmu_restore_ram(file_sav);
