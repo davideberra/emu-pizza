@@ -21,13 +21,13 @@
 #define __CYCLES_HDR__
 
 #include <stdint.h>
-
-/* global */
-extern uint32_t          cycles_clock;
+#include <stdio.h>
 
 /* prototypes */
 void cycles_change_emulation_speed();
 char cycles_init();
+void cycles_restore_stat(FILE *fp);
+void cycles_save_stat(FILE *fp);
 void cycles_set_speed(char dbl);
 char cycles_start_timer();
 void cycles_step();

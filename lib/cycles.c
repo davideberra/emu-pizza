@@ -40,31 +40,44 @@ sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
 
-/* am i init'ed? */
-char              cycles_inited = 0;
 
-/* ticks counter */
-uint32_t          cycles_cnt;
+typedef struct cycles_s 
+{
+    /* am i init'ed? */
+    char              inited;
 
-/* CPU clock */
-uint32_t          cycles_clock;
+    /* ticks counter */
+    uint32_t          cnt;
 
-/* handy for .... pfff */
-uint32_t          cycles_mask;
+    /* CPU clock */
+    uint32_t          clock;
+
+    /* handy for .... pfff */
+    uint32_t          mask;
+
+} cycles_t;
+
+/* instance of the main struct */
+cycles_t cycles = { 0, 0, 0, 0 };
 
 #define CYCLES_PAUSES 128
 
 /* internal prototype for timer handler */
-void cycles_timer_handler(int sig, siginfo_t *si, void *uc);
+void cycles_timer_handler(int sigval);
 
 
 /* set double or normal speed */
 void cycles_set_speed(char dbl)
 {
-    if (dbl)
+    global_cpu_double_speed = dbl;
+
+    /* calculate the mask */
+    cycles_change_emulation_speed();
+
+/*    if (dbl)
         cycles_mask = 0xFFFF;
     else
-        cycles_mask = 0x7FFF;
+        cycles_mask = 0x7FFF; */
 } 
 
 /* set emulation speed */
@@ -73,15 +86,15 @@ void cycles_change_emulation_speed()
     switch (global_emulation_speed)
     {
         case GLOBAL_EMULATION_SPEED_HALF:
-            cycles_mask = ((0x3FFF << global_cpu_double_speed) | 
+            cycles.mask = ((0x3FFF << global_cpu_double_speed) | 
                            global_cpu_double_speed);
             break;
         case GLOBAL_EMULATION_SPEED_NORMAL:
-            cycles_mask = ((0x7FFF << global_cpu_double_speed) | 
+            cycles.mask = ((0x7FFF << global_cpu_double_speed) | 
                            global_cpu_double_speed);
             break;
         case GLOBAL_EMULATION_SPEED_DOUBLE:
-            cycles_mask = ((0xFFFF << global_cpu_double_speed) | 
+            cycles.mask = ((0xFFFF << global_cpu_double_speed) | 
                            global_cpu_double_speed);
             break;
     }
@@ -90,10 +103,10 @@ void cycles_change_emulation_speed()
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
 void cycles_step()
 {
-    cycles_cnt += 4;
+    cycles.cnt += 4;
 
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
-    if ((cycles_cnt & cycles_mask) == 0)
+    if ((cycles.cnt & cycles.mask) == 0)
     {
         int res = 0;
 
@@ -129,17 +142,31 @@ void cycles_step()
 
 char cycles_init()
 {
-    cycles_inited = 1;
+    cycles.inited = 1;
 
     /* init clock and counter */
-    cycles_clock = 4194304;
-    cycles_cnt = 0;
+    cycles.clock = 4194304;
+    cycles.cnt = 0;
 
     /* mask for pauses cycles fast calc */
-    cycles_mask = 0x7FFF;
+    cycles.mask = 0x7FFF;
 
     /* init semaphore for cpu clocks sync */
     sem_init(&cycles_sem, 0, 0);
+
+    /* prepare timer to emulate video refresh interrupts */
+    cycles_sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&cycles_sa.sa_mask);
+
+    if (sigaction(SIGRTMIN, &cycles_sa, NULL) == -1)
+        return 1;
+    bzero(&cycles_te, sizeof(struct sigevent));
+
+    /* set and enable alarm */
+    cycles_te.sigev_notify = SIGEV_THREAD;
+    cycles_te.sigev_signo = SIGRTMIN;
+    cycles_te.sigev_notify_function = (void *) cycles_timer_handler;
+    cycles_te.sigev_value.sival_ptr = &cycles_timer_id;
 
     /* start timer */
     return cycles_start_timer();
@@ -147,22 +174,9 @@ char cycles_init()
 
 char cycles_start_timer()
 {
-    if (cycles_inited == 0) 
+    if (cycles.inited == 0)
         return 0;
 
-    /* prepare timer to emulate video refresh interrupts */
-    cycles_sa.sa_flags = SA_SIGINFO;
-    cycles_sa.sa_sigaction = cycles_timer_handler;
-    sigemptyset(&cycles_sa.sa_mask);
-    // bzero(&cycles_sa.sa_mask, sizeof(sig_t));
-    if (sigaction(SIGRTMIN, &cycles_sa, NULL) == -1)
-        return 1;
-    bzero(&cycles_te, sizeof(struct sigevent));
-
-    /* set and enable alarm */
-    cycles_te.sigev_notify = SIGEV_SIGNAL;
-    cycles_te.sigev_signo = SIGRTMIN;
-    cycles_te.sigev_value.sival_ptr = &cycles_timer_id;
     timer_create(CLOCK_REALTIME, &cycles_te, &cycles_timer_id);
 
     /* initialize CYCLES_PAUSES hits per second timer */
@@ -179,14 +193,15 @@ char cycles_start_timer()
 
 void cycles_stop_timer()
 {
-    if (cycles_inited == 0)
+    if (cycles.inited == 0)
         return;
 
     timer_delete(cycles_timer_id);
 }
 
 /* callback for timer events (64 times per second) */
-void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
+//void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
+void cycles_timer_handler(int sigval)
 {
     int sval;
 
@@ -200,7 +215,7 @@ void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 
 void cycles_term()
 {
-    if (cycles_inited == 0)
+    if (cycles.inited == 0)
         return;
 
     /* stop timer */
@@ -212,3 +227,14 @@ void cycles_term()
     /* destroy semaphore */
     sem_destroy(&cycles_sem);
 }
+
+void cycles_save_stat(FILE *fp)
+{
+    fwrite(&cycles, 1, sizeof(cycles_t), fp);
+}
+
+void cycles_restore_stat(FILE *fp)
+{
+    fread(&cycles, 1, sizeof(cycles_t), fp);
+}
+

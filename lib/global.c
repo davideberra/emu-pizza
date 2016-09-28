@@ -44,6 +44,6 @@ void global_init()
     global_slow_down = 0;
     global_record_audio = 0;
     global_emulation_speed = GLOBAL_EMULATION_SPEED_NORMAL;
-    bzero(global_save_folder, 256);
+    // bzero(global_save_folder, 256);
     bzero(global_rom_name, 256);
 }

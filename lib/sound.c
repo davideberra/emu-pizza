@@ -37,6 +37,9 @@ pthread_mutex_t   sound_mutex;
 /* super variable for audio controller */
 sound_t sound;
 
+/* global for output frequency */
+int sound_output_rate = 48000;
+
 /* internal prototypes */
 size_t sound_available_samples();
 void   sound_envelope_step();
@@ -48,6 +51,11 @@ void   sound_sweep_step();
 void   sound_term();
 void   sound_write_wave(uint16_t a, uint8_t v);
 
+
+int sound_get_samples()
+{
+    return sound_output_rate / 10;
+}
 
 void sound_init_pointers()
 {
@@ -104,10 +112,10 @@ void sound_init()
     pthread_cond_init(&sound_cond, NULL);
 
     /* how many cpu cycles we need to emit a 512hz clock (frame sequencer) */
-    sound.fs_cycles = cycles_clock / 512;
+    sound.fs_cycles = 4194304 / 512;
 
     /* how many cpu cycles to generate a single sample? */
-    sound.sample_cycles = (double) cycles_clock / SOUND_FREQ;
+    sound.sample_cycles = (double) 4194304 / sound_output_rate;
 
     /* init multiplier */
     sound.frame_multiplier = 1;
@@ -289,11 +297,9 @@ void sound_step()
     /* enough cpu cycles to generate a single frame? */
     if (sound.sample_cycles_cnt >= sound.sample_cycles)
     {
-        int sample_left = 0;
-        int sample_right = 0;
-        int sample = 0;
-        uint8_t channels_left = 0;
-        uint8_t channels_right = 0;
+        int16_t sample_left = 0;
+        int16_t sample_right = 0;
+        int16_t sample = 0;
 
         /* go back */
         sound.sample_cycles_cnt -= sound.sample_cycles;
@@ -325,34 +331,22 @@ void sound_step()
         {
             /* to the right? */
             if (sound.nr51->ch1_to_so1)
-            {
                 sample_right += sound.channel_one.sample;
-                channels_right++;
-            }
 
             /* to the left? */
             if (sound.nr51->ch1_to_so2)
-            {
                 sample_left += sound.channel_one.sample;
-                channels_left++;
-            }
         }
 
         if (sound.channel_two.active) // && sound.channel_two.sample)
         {
             /* to the right? */
             if (sound.nr51->ch2_to_so1)
-            {
                 sample_right += sound.channel_two.sample;
-                channels_right++;
-            }
 
             /* to the left? */
             if (sound.nr51->ch2_to_so2)
-            {
                 sample_left += sound.channel_two.sample;
-                channels_left++;
-            }
         }
 
         if (sound.channel_three.active)
@@ -377,7 +371,7 @@ void sound_step()
                     s = sound.wave_table[idx >> 1] & 0x0f;
 
                 /* transform it into signed 16 bit sample */
-                sample = ((s * 0x888) >> shift); 
+                sample = ((s * 0x222) >> shift); 
             }
 
             
@@ -386,17 +380,11 @@ void sound_step()
             {
                 /* to the right? */
                 if (sound.nr51->ch3_to_so1)
-                {
                     sample_right += sample;
-                    channels_right++;
-                }
 
                 /* to the left? */
                 if (sound.nr51->ch3_to_so2)
-                {
                     sample_left += sample;
-                    channels_left++;
-                } 
             }
         }
         
@@ -404,17 +392,11 @@ void sound_step()
         {
             /* to the right? */
             if (sound.nr51->ch4_to_so1)
-            {
                 sample_right += sound.channel_four.sample;
-                channels_right++;
-            }
 
             /* to the left? */
             if (sound.nr51->ch4_to_so2)
-            {
                 sample_left += sound.channel_four.sample;
-                channels_left++;
-            }
         }
 
 /*        if (global_emulation_speed == GLOBAL_EMULATION_SPEED_HALF)
@@ -428,22 +410,9 @@ void sound_step()
 
         for (i=0; i<sound.frame_multiplier; i++)
         { 
-            /* at least one channel? */ 
-            if (channels_left)
-            {
-                /* push the average value of all channels samples */
-                sound_push_sample((int16_t) (sample_left / channels_left));
-            }
-            else
-                sound_push_sample((int16_t) 0x0000); 
-
-            if (channels_right)
-            {
-                /* push the average value of all channels samples */
-                sound_push_sample((int16_t) (sample_right / channels_right));
-            }
-            else
-                sound_push_sample((int16_t) 0x0000);
+            /* push the sum of all channels samples */
+            sound_push_sample(sample_left);
+            sound_push_sample(sample_right);
         }
     }
 }
@@ -507,7 +476,7 @@ void sound_push_sample(int16_t s)
     sound.buf_available++;
 
     /* if it's locked and we got enough samples, unlock */
-    if (sound.buf_empty && sound.buf_available == SOUND_SAMPLES * 2)
+    if (sound.buf_empty && sound.buf_available == sound_output_rate / 5)
     {
         sound.buf_empty = 0;
 
@@ -540,7 +509,14 @@ void sound_read_samples(int len, int16_t *buf)
 {
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
-   
+
+    /* am i shutting down? exit */
+    if (global_quit)
+    {
+        pthread_mutex_unlock(&sound_mutex);
+        return;
+    }
+
     int to_read = len;
 
     /* not enough samples? read what we got */
@@ -699,13 +675,13 @@ void sound_envelope_step()
         {
             if (sound.nr12->add)
             {
-                if (sound.channel_one.volume < (14 * 0x888))
-                    sound.channel_one.volume += 0x888;
+                if (sound.channel_one.volume < (14 * 0x222))
+                    sound.channel_one.volume += 0x222;
             }
             else
             {
-                if (sound.channel_one.volume >= 0x888)
-                    sound.channel_one.volume -= 0x888;
+                if (sound.channel_one.volume >= 0x222)
+                    sound.channel_one.volume -= 0x222;
             }
 
             /* reset counter */
@@ -723,13 +699,13 @@ void sound_envelope_step()
         {
             if (sound.nr22->add)
             {
-                if (sound.channel_two.volume < (14 * 0x888))
-                    sound.channel_two.volume += 0x888;
+                if (sound.channel_two.volume < (14 * 0x222))
+                    sound.channel_two.volume += 0x222;
             }
             else
             {
-                if (sound.channel_two.volume >= 0x888)
-                    sound.channel_two.volume -= 0x888;
+                if (sound.channel_two.volume >= 0x222)
+                    sound.channel_two.volume -= 0x222;
             }
 
             /* reset counter */
@@ -747,21 +723,19 @@ void sound_envelope_step()
         {
             if (sound.nr42->add)
             {
-                if (sound.channel_four.volume < (14 * 0x888))
-                    sound.channel_four.volume += 0x888;
+                if (sound.channel_four.volume < (14 * 0x222))
+                    sound.channel_four.volume += 0x222;
             }
             else
             {
-                if (sound.channel_four.volume > 0x888)
-                    sound.channel_four.volume -= 0x888;
+                if (sound.channel_four.volume > 0x222)
+                    sound.channel_four.volume -= 0x222;
             }
 
             /* reset counter */
             sound.channel_four.envelope_cnt = 0;
         }
     }
-
-
 }
 
 uint8_t sound_read_reg(uint16_t a, uint8_t v)
@@ -839,6 +813,16 @@ uint8_t sound_read_reg(uint16_t a, uint8_t v)
 
         default: return v;
     }
+}
+
+void sound_set_output_rate(int freq)
+{
+    sound_output_rate = freq;
+
+    double cpu_base_freq = 4194304;
+
+    /* calc cycles needed to generate a sample */
+    sound.sample_cycles = cpu_base_freq / (double) sound_output_rate;
 }
 
 void sound_write_reg(uint16_t a, uint8_t v)
@@ -1005,7 +989,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* base volume */
                 sound.channel_one.volume = 
-                    sound.nr12->volume * 0x888;
+                    sound.nr12->volume * 0x222;
 
                 /* reset envelope counter */
                 sound.channel_one.envelope_cnt = 0;
@@ -1177,7 +1161,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* base volume */
                 sound.channel_two.volume = 
-                    sound.nr22->volume * 0x888;
+                    sound.nr22->volume * 0x222;
 
                 /* reset envelope counter */
                 sound.channel_two.envelope_cnt = 0;
@@ -1356,7 +1340,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* base volume */
                 sound.channel_four.volume =
-                    sound.nr42->volume * 0x888;
+                    sound.nr42->volume * 0x222;
 
                 /* reset envelope counter */
                 sound.channel_four.envelope_cnt = 0;
@@ -1487,6 +1471,11 @@ void sound_rebuild_wave()
 
 void sound_term()
 {
+    if (sound.buf_empty)
+    {
+        sound.buf_empty = 0;
+        pthread_cond_signal(&sound_cond);
+    }
 }
 
 void sound_save_stat(FILE *fp)

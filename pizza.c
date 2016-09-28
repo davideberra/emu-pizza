@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 
     /* initialize SDL audio */
     SDL_Init(SDL_INIT_AUDIO);
-    desired.freq = SOUND_FREQ;
+    desired.freq = SOUND_FREQ_MAX;
     desired.samples = SOUND_SAMPLES;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
@@ -107,6 +107,9 @@ int main(int argc, char **argv)
 
     /* init GPU */
     gpu_init(&cb);
+
+    /* set sound output rate */
+    sound_set_output_rate(SOUND_FREQ_MAX);
 
     /* get frame buffer reference */
     fb = gpu_get_frame_buffer();    
@@ -206,6 +209,9 @@ int main(int argc, char **argv)
 
 void *start_thread(void *args)
 {
+    /* init all the stuff */
+    gameboy_init();
+
     /* run until break or global_quit is set */
     gameboy_run();
 

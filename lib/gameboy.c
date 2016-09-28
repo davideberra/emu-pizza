@@ -148,7 +148,7 @@ void gameboy_run()
     uint8_t op;
 
     /* init */
-    gameboy_init();
+    // gameboy_init();
 
     /* get interrupt flags and interrupt enables */
     uint8_t *int_e;
@@ -190,14 +190,11 @@ void gameboy_run()
                                    mmu_read_no_cyc(state.sp), 
                                    mmu_read_no_cyc(state.sp + 1));
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x FF40: %02x FF41: %02x FF44: %02x FF4B: %02x", state.a, *state.bc, 
-                                                          *state.de, *state.hl, 
-                                                          mmu_read_no_cyc(0xFF40), 
-                                                          mmu_read_no_cyc(0xFF41),
-                                                          mmu_read_no_cyc(0xFF44),
-                                                          mmu_read_no_cyc(0xFF4B));
+            printf("A: %02x BC: %04x DE: %04x HL: %04x", state.a, *state.bc, 
+                                                         *state.de, *state.hl); 
 
-            printf("IF: %02x IE: %02x ENAB %d\n", *int_f, *int_e, state.int_enable);
+            printf("IF: %02x IE: %02x ENAB %d\n", 
+                                             *int_f, *int_e, state.int_enable);
         }
 
         /* execute instruction by the GB Z80 version */
@@ -296,6 +293,9 @@ void gameboy_stop()
         sem_post(&gameboy_sem);
     }
 
+    /* unlock threads stuck during reading */
+    sound_term();
+
     /* shutdown semaphore limitator */
     cycles_term();
 }
@@ -363,6 +363,20 @@ char gameboy_save_stat(int idx)
 
     fclose(fp);
 
+    /* now dump raw data of frame buffer */
+    snprintf(path, sizeof(path), "%s/%s.%d.fb", global_save_folder, 
+                                                global_rom_name, idx);
+
+    fp = fopen(path, "w+");
+
+    if (fp == NULL)
+        return 1;
+
+    /* dump frame buffer pixels */
+    gpu_save_fb(fp);
+
+    fclose(fp);
+    
     return 0;
 }
 

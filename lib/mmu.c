@@ -182,6 +182,9 @@ void mmu_step()
 
             /* reset address */
             mmu.dma_address = 0x0000;
+
+            /* DEBUG */
+            // gpu_dump_oam();
         }
     }
 
@@ -272,6 +275,10 @@ uint8_t mmu_read(uint16_t a)
 {
     /* always takes 4 cycles */
     cycles_step();
+
+    /* don't ask me why.... */
+    if (a == 0xFF44)
+        return (mmu.memory[0xFF44] == 153 ? 0 : mmu.memory[0xFF44]);
 
     /* joypad reading */
     if (a == 0xFF00)
@@ -946,14 +953,16 @@ void mmu_write(uint16_t a, uint8_t v)
 
                         /* reset to_transfer var */
                         mmu.hdma_to_transfer = 0;
+
+                        /* move forward src and dst addresses =| */
+                        mmu.hdma_src_address += to_transfer;
+                        mmu.hdma_dst_address += to_transfer;
                     }
                     else
                         mmu.hdma_to_transfer = to_transfer;
  
                     break;
             }
-
-
         }
 
         /* finally set memory byte with data */
@@ -966,7 +975,7 @@ void mmu_write(uint16_t a, uint8_t v)
             mmu.dma_address = v * 256;
 
             /* initialize counter, DMA needs 672 ticks */
-            mmu.dma_cycles = 168;
+            mmu.dma_cycles = 4; // 168 / 2;
         }
     }
     else

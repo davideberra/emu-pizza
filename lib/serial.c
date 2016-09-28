@@ -90,6 +90,9 @@ void serial_step()
             /* reset counter */
             serial.cnt = 0;
 
+            if (serial.bits_sent == 0)
+                printf("VOGLIO SPEDIRE %02x\n", *(serial.data));
+
             /* one bit more was sent - update FF01  */
             *(serial.data) = (*(serial.data) << 1) | 0x01;
 

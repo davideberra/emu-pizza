@@ -84,6 +84,24 @@ gpu_frame_ready_cb_t gpu_frame_ready_cb;
 gpu_t gpu;
 
 
+
+void gpu_dump_oam()
+{
+    /* make it point to the first OAM object */
+    gpu_oam_t *oam = (gpu_oam_t *) mmu_addr(0xFE00);
+
+    int i;
+
+    for (i=0; i<40; i++)
+    {
+        if (oam[i].x != 0 && oam[i].y != 0)
+            printf("OAM X %d Y %d VRAM %d PATTERN %d\n", oam[i].x, oam[i].y,
+                                                         oam[i].vram_bank,
+                                                         oam[i].pattern);
+    }
+}
+
+
 /* init pointers */
 void gpu_init_pointers()
 {
@@ -837,6 +855,10 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x02;
                     }
 
+           //         gpu_draw_line(*gpu.ly);
+
+           //         printf("FINE HBLANK\n");
+
                     /* notify mode has changed */
                     ly_changed = 1;
 
@@ -958,24 +980,30 @@ uint8_t gpu_read_reg(uint16_t a)
     switch (a)
     {
         case 0xFF68:
+
             return (gpu.cgb_palette_bg_autoinc << 7 | gpu.cgb_palette_bg_idx);
 
         case 0xFF69:
 
             if ((gpu.cgb_palette_bg_idx & 0x01) == 0x00)
-                return gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 0x00ff;
+                return gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 
+                       0x00ff;
             else
-                return (gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 0xff00) >> 8;
+                return (gpu.cgb_palette_bg[gpu.cgb_palette_bg_idx / 2] & 
+                       0xff00) >> 8;
 
         case 0xFF6A:
+
             return (gpu.cgb_palette_oam_autoinc << 7 | gpu.cgb_palette_oam_idx);
 
         case 0xFF6B:
 
             if ((gpu.cgb_palette_oam_idx & 0x01) == 0x00)
-                return gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 0x00ff;
+                return gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 
+                       0x00ff;
             else
-                return (gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 0xff00) >> 8;
+                return (gpu.cgb_palette_oam[gpu.cgb_palette_oam_idx / 2] & 
+                       0xff00) >> 8;
 
 
     }
@@ -1019,7 +1047,7 @@ void gpu_write_reg(uint16_t a, uint8_t v)
 
         case 0xFF68:
 
-            gpu.cgb_palette_bg_idx = v & 0x3f;
+            gpu.cgb_palette_bg_idx = (v & 0x3f);
             gpu.cgb_palette_bg_autoinc = ((v & 0x80) == 0x80);
 
             break;
@@ -1049,7 +1077,7 @@ void gpu_write_reg(uint16_t a, uint8_t v)
                  ((r * 3 + g * 2 + b * 11 + 8) >> 4);
  
             if (gpu.cgb_palette_bg_autoinc)
-                gpu.cgb_palette_bg_idx++;
+                gpu.cgb_palette_bg_idx = ((gpu.cgb_palette_bg_idx + 1) & 0x3f);
 
             break;
 
@@ -1085,7 +1113,8 @@ void gpu_write_reg(uint16_t a, uint8_t v)
                  ((r * 3 + g * 2 + b * 11 + 8) >> 4);
 
             if (gpu.cgb_palette_oam_autoinc)
-                gpu.cgb_palette_oam_idx++;
+                gpu.cgb_palette_oam_idx = 
+                    ((gpu.cgb_palette_oam_idx + 1) & 0x3f);
 
             break;
 
@@ -1098,6 +1127,11 @@ void gpu_set_speed(char speed)
         gpu.step = 2;
     else
         gpu.step = 4;
+}
+
+void gpu_save_fb(FILE *fp)
+{
+    fwrite(&gpu.frame_buffer, 1, sizeof(int16_t) * 144 * 160, fp);
 }
 
 void gpu_save_stat(FILE *fp)
