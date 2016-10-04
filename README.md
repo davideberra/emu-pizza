@@ -1,5 +1,5 @@
 # Emu-pizza
-An Intel 8080, Zilog Z80 and new born Gameboy emulator.... (still dunno what i want to be)
+A new born Gameboy Classic/Color emulator....
 
 Requirements
 -----------
@@ -24,16 +24,8 @@ make
 Usage 
 -----
 ```
-emu-pizza [cpudiag.bin|invaders|8080EX1.com|gameboy rom]
+emu-pizza [gameboy rom]
 ```
-
-Space Invaders keys
--------------------
-* Arrow up -- Add 1 credit
-* Arrow left/right -- Move ship
-* Space -- Fire
-* 1/2 -- Start 1/2 player(s)
-* Q -- Exit
 
 Gameboy keys
 -------------------
@@ -45,17 +37,11 @@ Gameboy keys
 
 Supported ROMS
 --------------
-* [cpudiag.bin](http://www.emulator101.com/files/cpudiag.bin) -- An Intel 8080/8085 diagnostic ROM [asm file](http://www.emulator101.com/files/cpudiag.asm) 
-* [8080 Exercizer](https://github.com/begoon/8080ex1) -- A tougher Intel 8080 exercizer
-* Zextest -- A Zilog Z80 exercizer
-* Space Invaders -- Guess what
-* Most of Gameboy roms with MBC1, MBC2 or no MBC at all -- (e.g. Tetris, Dr Mario, Amida)
+* Almost totality of Gameboy roms 
 
 Todo
 ----
-* MBC3, MBC5 memory controllers
-* Data save
-* Sound
+* Serial cable emulation 
 
 Credits
 -------
