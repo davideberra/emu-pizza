@@ -38,6 +38,8 @@
 /* semaphore for pauses */
 sem_t gameboy_sem;
 
+char gameboy_inited = 0;
+
 
 void gameboy_init()
 {
@@ -117,11 +119,17 @@ void gameboy_init()
     /* init semaphore for pauses */
     sem_init(&gameboy_sem, 0, 0);
 
+    /* mark as inited */
+    gameboy_inited = 1;
+
     return;
 } 
 
 void gameboy_set_pause(char pause)
 {
+    if (!gameboy_inited)
+        return;
+
     if (pause == global_pause)
         return;
 
@@ -131,13 +139,12 @@ void gameboy_set_pause(char pause)
     {
         /* stop timer */
         cycles_stop_timer();
-
     }
     else
     {
         /* restart timer */
         cycles_start_timer();
- 
+
         /* wake up */
         sem_post(&gameboy_sem);
     }
@@ -174,7 +181,7 @@ void gameboy_run()
         }
 
         /* pause? */
-        while (global_pause) 
+        while (global_pause)
             sem_wait(&gameboy_sem);
 
         /* get op */
@@ -183,18 +190,16 @@ void gameboy_run()
         /* print out CPU state if enabled by debug flag */
         if (global_debug)
         {
-            printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ", 
+            printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ",
                                    op, *state.f & 0xd0, state.pc, 
                                    mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
                                    mmu_read_no_cyc(state.sp), 
                                    mmu_read_no_cyc(state.sp + 1));
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x", state.a, *state.bc, 
-                                                         *state.de, *state.hl); 
 
-            printf("IF: %02x IE: %02x ENAB %d\n", 
-                                             *int_f, *int_e, state.int_enable);
+            printf("A: %02x BC: %04x DE: %04x HL: %04x", state.a, *state.bc,
+                                                        *state.de, *state.hl);
         }
 
         /* execute instruction by the GB Z80 version */
@@ -321,6 +326,11 @@ char gameboy_restore_stat(int idx)
 
     /* restore CPU status */
     fread(&state, 1, sizeof(z80_state_t), fp);
+
+    state.f = (uint8_t *) &state.flags;
+    state.bc = (uint16_t *) &state.c;
+    state.de = (uint16_t *) &state.e;
+    state.hl = (uint16_t *) &state.l;
 
     /* dump every module */
     sound_restore_stat(fp);

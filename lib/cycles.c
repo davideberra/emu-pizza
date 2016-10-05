@@ -86,16 +86,16 @@ void cycles_change_emulation_speed()
     switch (global_emulation_speed)
     {
         case GLOBAL_EMULATION_SPEED_HALF:
-            cycles.mask = ((0x3FFF << global_cpu_double_speed) | 
-                           global_cpu_double_speed);
+            cycles.mask = (uint32_t) ((0x00003FFF << global_cpu_double_speed) |
+                                      global_cpu_double_speed);
             break;
         case GLOBAL_EMULATION_SPEED_NORMAL:
-            cycles.mask = ((0x7FFF << global_cpu_double_speed) | 
-                           global_cpu_double_speed);
+            cycles.mask = (uint32_t) ((0x00007FFF << global_cpu_double_speed) |
+                                      global_cpu_double_speed);
             break;
         case GLOBAL_EMULATION_SPEED_DOUBLE:
-            cycles.mask = ((0xFFFF << global_cpu_double_speed) | 
-                           global_cpu_double_speed);
+            cycles.mask = (uint32_t) ((0x0000FFFF << global_cpu_double_speed) |
+                                      global_cpu_double_speed);
             break;
     }
 }

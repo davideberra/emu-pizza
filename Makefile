@@ -1,4 +1,4 @@
-CFLAGS=-O3 -fomit-frame-pointer
+CFLAGS=-O3
 ifeq ($(OS),Windows_NT)
     LIBS=-lrt `sdl2-config --libs`
     CFLAGS+=-w 

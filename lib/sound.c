@@ -308,11 +308,10 @@ void sound_step()
         sound.frame_counter++;
 
         /* is it the case to push samples? */
-        if ((global_emulation_speed > GLOBAL_EMULATION_SPEED_NORMAL) &&
-           ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
-            (sound.frame_counter & 0x01) != 0) ||
+        if (((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
+            (sound.frame_counter & 0x0001) != 0) ||
             (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
-            (sound.frame_counter & 0x03) != 0)))
+            (sound.frame_counter & 0x0003) != 0)))
             return;
 
         /* DAC turned off? */

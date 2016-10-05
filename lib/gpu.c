@@ -172,11 +172,14 @@ void gpu_draw_frame()
 //    bzero(gpu.priority, 160 * 144);
 //    bzero(gpu.palette_idx, 160 * 144);
 
+    /* increase frame counter */
+    gpu.frame_counter++;
+
     /* is it the case to push samples? */
     if ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
-        (gpu.frame_counter & 0x01) != 0) ||
+        (gpu.frame_counter & 0x0001) != 0) ||
         (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
-        (gpu.frame_counter & 0x03) != 0))
+        (gpu.frame_counter & 0x0003) != 0))
         return;
 
     /* simulate shitty gameboy response time of LCD                 */
@@ -229,9 +232,9 @@ void gpu_draw_line(uint8_t line)
 
     /* is it the case to push samples? */
     if ((global_emulation_speed == GLOBAL_EMULATION_SPEED_DOUBLE &&
-        (gpu.frame_counter & 0x01) != 0) ||
+        (gpu.frame_counter & 0x0001) != 0) ||
         (global_emulation_speed == GLOBAL_EMULATION_SPEED_4X &&
-        (gpu.frame_counter & 0x03) != 0))
+        (gpu.frame_counter & 0x0003) != 0))
         return;
 
     /* gotta show BG? Answer is always YES in case of Gameboy Color */
