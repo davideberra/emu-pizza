@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <sys/stat.h>
 
 #include "cartridge.h"
@@ -86,6 +87,8 @@ int main(int argc, char **argv)
     screenSurface = SDL_ConvertSurfaceFormat(windowSurface,
                                              SDL_PIXELFORMAT_RGB565, 
                                              0);
+
+    gameboy_init();
 
     /* initialize SDL audio */
     SDL_Init(SDL_INIT_AUDIO);
@@ -203,14 +206,16 @@ int main(int argc, char **argv)
 
     /* join emulation thread */   
     pthread_join(thread, NULL);
- 
+
+    cycles_term();
+
     return 0;
 }
 
 void *start_thread(void *args)
 {
     /* init all the stuff */
-    gameboy_init();
+    // gameboy_init();
 
     /* run until break or global_quit is set */
     gameboy_run();

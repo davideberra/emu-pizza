@@ -84,17 +84,17 @@ typedef struct gpu_s
     uint8_t   *lyc;
 
     /* clocks counter   */
-    uint32_t  clocks;
+    uint_fast32_t  clocks;
 
     /* gpu step span */
-    uint8_t   step;
+    uint_fast32_t   step;
 
     /* window last drawn lines */
     uint8_t   window_last_ly;
     uint8_t   window_skipped_lines;
 
     /* frame counter */
-    uint16_t  frame_counter;
+    uint_fast16_t  frame_counter;
 
     /* BG palette       */
     uint16_t  bg_palette[4]; 

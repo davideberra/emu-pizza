@@ -42,8 +42,8 @@ typedef struct gameboy_timer_s
     uint8_t *ctrl;
 
     /* current value    */
-    uint32_t sub;
-    uint32_t div_sub;
+    uint_fast32_t sub;
+    uint_fast32_t div_sub;
 
 } gameboy_timer_t;
 

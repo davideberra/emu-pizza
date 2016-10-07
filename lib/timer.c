@@ -45,9 +45,9 @@ void timer_step()
     /* div_sub always run */
     timer.div_sub += 4;
 
-    if (timer.div_sub >= 256)
+    if ((timer.div_sub & 0x000000FF) == 0x00)
     {
-        timer.div_sub -= 256;
+        timer.div_sub = 0;
         (*timer.div)++;
     }
 

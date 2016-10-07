@@ -88,10 +88,14 @@ char cartridge_load(char *file_gb) {
         case 0x05: printf("MBC2\n"); break;
         case 0x06: mmu_init_ram(512); printf("MBC2 + BATTERY\n"); break;
         case 0x10: printf("MBC3 + TIMER + RAM + BATTERY\n"); break;
+        case 0x11: printf("MBC3\n"); break;
+        case 0x12: printf("MBC3 + RAM\n"); break;
         case 0x13: printf("MBC3 + RAM + BATTERY\n"); break;
         case 0x19: printf("MBC5\n"); break;
+        case 0x1A: printf("MBC5 + RAM\n"); break;
         case 0x1B: printf("MBC5 + RAM + BATTERY\n"); break;
         case 0x1C: printf("MBC5 + RUMBLE\n"); break;
+        case 0x1D: printf("MBC5 + RUMBLE + RAM\n"); break;
         case 0x1E: printf("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
 
         default: printf("Unknown cartridge type: %02x\n", mbc);
@@ -156,7 +160,7 @@ char cartridge_load(char *file_gb) {
     }
 
     /* save base name of the rom */
-    strlcpy(global_rom_name, basename(file_gb), 256);
+    strncpy(global_rom_name, basename(file_gb), 256);
 
     /* build file.sav */
     snprintf(file_sav, sizeof(file_sav), "%s/%s.sav", 

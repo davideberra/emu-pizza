@@ -165,8 +165,8 @@ void gameboy_run()
     int_e = mmu_addr(0xFFFF);
     int_f = mmu_addr(0xFF0F);
 
-    /* set it was started */
-    // global_started = 1;
+    /* start at normal speed */
+    global_cpu_double_speed = 0;
 
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
@@ -198,8 +198,8 @@ void gameboy_run()
                                    mmu_read_no_cyc(state.sp + 1));
 
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x", state.a, *state.bc,
-                                                        *state.de, *state.hl);
+            printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc,
+                                                          *state.de, *state.hl);
         }
 
         /* execute instruction by the GB Z80 version */

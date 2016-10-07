@@ -40,27 +40,10 @@ sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
 
-
-typedef struct cycles_s 
-{
-    /* am i init'ed? */
-    char              inited;
-
-    /* ticks counter */
-    uint32_t          cnt;
-
-    /* CPU clock */
-    uint32_t          clock;
-
-    /* handy for .... pfff */
-    uint32_t          mask;
-
-} cycles_t;
-
 /* instance of the main struct */
 cycles_t cycles = { 0, 0, 0, 0 };
 
-#define CYCLES_PAUSES 128
+#define CYCLES_PAUSES 64
 
 /* internal prototype for timer handler */
 void cycles_timer_handler(int sigval);
@@ -69,15 +52,11 @@ void cycles_timer_handler(int sigval);
 /* set double or normal speed */
 void cycles_set_speed(char dbl)
 {
+    /* set global */
     global_cpu_double_speed = dbl;
 
     /* calculate the mask */
     cycles_change_emulation_speed();
-
-/*    if (dbl)
-        cycles_mask = 0xFFFF;
-    else
-        cycles_mask = 0x7FFF; */
 } 
 
 /* set emulation speed */
@@ -86,15 +65,15 @@ void cycles_change_emulation_speed()
     switch (global_emulation_speed)
     {
         case GLOBAL_EMULATION_SPEED_HALF:
-            cycles.mask = (uint32_t) ((0x00003FFF << global_cpu_double_speed) |
-                                      global_cpu_double_speed);
-            break;
-        case GLOBAL_EMULATION_SPEED_NORMAL:
             cycles.mask = (uint32_t) ((0x00007FFF << global_cpu_double_speed) |
                                       global_cpu_double_speed);
             break;
-        case GLOBAL_EMULATION_SPEED_DOUBLE:
+        case GLOBAL_EMULATION_SPEED_NORMAL:
             cycles.mask = (uint32_t) ((0x0000FFFF << global_cpu_double_speed) |
+                                      global_cpu_double_speed);
+            break;
+        case GLOBAL_EMULATION_SPEED_DOUBLE:
+            cycles.mask = (uint32_t) ((0x0001FFFF << global_cpu_double_speed) |
                                       global_cpu_double_speed);
             break;
     }
@@ -106,7 +85,7 @@ void cycles_step()
     cycles.cnt += 4;
 
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
-    if ((cycles.cnt & cycles.mask) == 0)
+    if ((cycles.cnt & cycles.mask) == 0x00000000)
     {
         int res = 0;
 
@@ -149,7 +128,7 @@ char cycles_init()
     cycles.cnt = 0;
 
     /* mask for pauses cycles fast calc */
-    cycles.mask = 0x7FFF;
+    cycles.mask = 0xFFFF;
 
     /* init semaphore for cpu clocks sync */
     sem_init(&cycles_sem, 0, 0);
@@ -203,12 +182,12 @@ void cycles_stop_timer()
 //void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 void cycles_timer_handler(int sigval)
 {
-    int sval;
+//    int sval;
 
-    sem_getvalue(&cycles_sem, &sval);
+/*    sem_getvalue(&cycles_sem, &sval);
 
     if (sval)
-        printf("SVAL: %d\n", sval);
+        printf("SVAL: %d\n", sval); */
 
     sem_post(&cycles_sem);
 }
@@ -226,6 +205,8 @@ void cycles_term()
 
     /* destroy semaphore */
     sem_destroy(&cycles_sem);
+
+//    printf("MEDIA %lld MILLISEX\n", totaru / totaru_cnt); 
 }
 
 void cycles_save_stat(FILE *fp)

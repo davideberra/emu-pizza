@@ -53,8 +53,8 @@ typedef struct z80_state_s
     uint8_t        l;
 #endif
 
-    uint16_t       sp;
-    uint16_t       pc;
+    uint_fast16_t       sp;
+    uint_fast16_t       pc;
 
     /* shortcuts */
     uint16_t       *bc;
@@ -74,7 +74,7 @@ typedef struct z80_state_s
     /* total cycles */
     uint64_t       cycles;
 
-} __attribute__((aligned(4))) z80_state_t;
+} z80_state_t;
 
 #define Z80_MAX_MEMORY 65536
 
@@ -131,7 +131,7 @@ void static inline z80_set_flags_zc_16(unsigned int v)
 
 /* calc AC for given operands */
 void static inline z80_set_flags_ac(uint8_t a, uint8_t b,
-                                             unsigned int r)
+                                    unsigned int r)
 {
     /* calc xor for AC and overflow */
     unsigned int c = (a ^ b ^ r);
@@ -144,8 +144,8 @@ void static inline z80_set_flags_ac(uint8_t a, uint8_t b,
 
 /* calc AC and overflow flag given operands (16 bit flavour) */
 void static inline z80_set_flags_ac_16(unsigned int a, 
-                                                unsigned int b, 
-                                                unsigned int r)
+                                       unsigned int b, 
+                                       unsigned int r)
 {
     /* calc xor for AC and overflow */
     unsigned int c = (a ^ b ^ r);
@@ -1178,7 +1178,7 @@ int static inline z80_execute(unsigned char code)
     uint8_t      byte = 1;
     uint8_t      byte2 = 1;
     unsigned int result;
-    uint16_t     addr;
+    uint_fast16_t     addr;
 
     switch (code)
     {

@@ -84,7 +84,6 @@ gpu_frame_ready_cb_t gpu_frame_ready_cb;
 gpu_t gpu;
 
 
-
 void gpu_dump_oam()
 {
     /* make it point to the first OAM object */
@@ -127,7 +126,7 @@ void gpu_init(gpu_frame_ready_cb_t cb)
     gpu_init_pointers();
 
     /* init counters */ 
-    gpu.clocks = 0;
+    gpu.clocks = 456;
     gpu.frame_counter = 0;
  
     /* step for normal CPU speed */
@@ -149,7 +148,7 @@ void gpu_toggle(uint8_t state)
     if (state & 0x80)
     {
         /* LCD turned on */
-        gpu.clocks = 0;
+        gpu.clocks = 456;
         *gpu.ly  = 0;
         (*gpu.lcd_status).mode = 0x00;
         (*gpu.lcd_status).ly_coincidence = 0x00;
@@ -157,7 +156,7 @@ void gpu_toggle(uint8_t state)
     else
     {
         /* LCD turned off - reset stuff */
-        gpu.clocks = 0;
+        gpu.clocks = 456;
         *gpu.ly = 0;
         (*gpu.lcd_status).mode = 0x00;
     }
@@ -166,12 +165,6 @@ void gpu_toggle(uint8_t state)
 /* push frame on screen */
 void gpu_draw_frame()
 {
-    int i;
-
-    /* reset priority matrix */
-//    bzero(gpu.priority, 160 * 144);
-//    bzero(gpu.palette_idx, 160 * 144);
-
     /* increase frame counter */
     gpu.frame_counter++;
 
@@ -182,25 +175,45 @@ void gpu_draw_frame()
         (gpu.frame_counter & 0x0003) != 0))
         return;
 
+    uint_fast32_t i,r,g,b,r2,g2,b2,res;
+
     /* simulate shitty gameboy response time of LCD                 */
     /* by calculating an average between current and previous frame */
-    for (i=0; i<(144*160); i++)
+    //for (i=0; i<(144*160); i++)
+    for (i=0; i<(144 * 160); i++)
     {
-        uint16_t r = gpu.frame_buffer[i] & 0x1F;
-        uint16_t g = gpu.frame_buffer[i] >> 5 & 0x3F;
-        uint16_t b = gpu.frame_buffer[i] >> 11 & 0x1F;
+/*        r = gpu.frame_buffer[i] & 0x1F;
+        g = gpu.frame_buffer[i] >> 5 & 0x3F;
+        b = gpu.frame_buffer[i] >> 11 & 0x1F;
 
-        uint16_t r2 = gpu.frame_buffer_prev[i] & 0x1F;
-        uint16_t g2 = gpu.frame_buffer_prev[i] >> 5 & 0x3F;
-        uint16_t b2 = gpu.frame_buffer_prev[i] >> 11 & 0x1F;
+        r2 = gpu.frame_buffer_prev[i] & 0x1F;
+        g2 = gpu.frame_buffer_prev[i] >> 5 & 0x3F;
+        b2 = gpu.frame_buffer_prev[i] >> 11 & 0x1F;
 
         gpu.frame_buffer_prev[i] = gpu.frame_buffer[i];
 
-        gpu.frame_buffer[i] = ((r + r2) / 2) |
-                              (((g + g2) / 2) << 5) |
-                              (((b + b2) / 2) << 11);
-    }
-        
+        gpu.frame_buffer[i] = (uint16_t) ((r + r2) >> 1) |
+                              (((g + g2) >> 1) << 5) |
+                              (((b + b2) >> 1) << 11);*/
+
+        r = gpu.frame_buffer[i] & 0x001F;
+        g = gpu.frame_buffer[i] & 0x07E0;
+        b = gpu.frame_buffer[i] & 0xF800;
+
+        r2 = gpu.frame_buffer_prev[i] & 0x001F;
+        g2 = gpu.frame_buffer_prev[i] & 0x07E0;
+        b2 = gpu.frame_buffer_prev[i] & 0xF800;
+
+        // gpu.frame_buffer_prev[i] = gpu.frame_buffer[i];
+
+        res = ((r + r2) >> 1) |
+              (((g + g2) >> 1) & 0x07E0) |
+              (((b + b2) >> 1) & 0xF800);
+
+        gpu.frame_buffer_prev[i] = gpu.frame_buffer[i];
+        gpu.frame_buffer[i] = res;
+    } 
+       
     /* call the callback */
     if (gpu_frame_ready_cb)
         (*gpu_frame_ready_cb) ();
@@ -221,11 +234,6 @@ uint16_t *gpu_get_frame_buffer()
 /* draw a single line */
 void gpu_draw_line(uint8_t line)
 {
-    int i, t, y, px_start, px_drawn;
-    uint8_t *tiles_map, tile_subline, palette_idx, x_flip, priority;
-    uint16_t tiles_addr, tile_n, tile_idx, tile_line;
-    uint16_t tile_y;
-    
     /* avoid mess */
     if (line > 144)
         return;
@@ -237,6 +245,11 @@ void gpu_draw_line(uint8_t line)
         (gpu.frame_counter & 0x0003) != 0))
         return;
 
+    int i, t, y, px_start, px_drawn;
+    uint8_t *tiles_map, tile_subline, palette_idx, x_flip, priority;
+    uint16_t tiles_addr, tile_n, tile_idx, tile_line;
+    uint16_t tile_y;
+    
     /* gotta show BG? Answer is always YES in case of Gameboy Color */
     if ((*gpu.lcd_ctrl).bg || global_cgb)
     {
@@ -289,8 +302,8 @@ void gpu_draw_line(uint8_t line)
         tile_line = ((tile_y >> 3) * 32); 
   
         /* calc first pixel of frame buffer of the current line */
-        uint16_t pos_fb = line * 160;
-        uint16_t pos;
+        uint_fast16_t pos_fb = line * 160;
+        uint_fast16_t pos;
  
         /* calc tile subline */
         tile_subline = tile_y % 8;
@@ -652,7 +665,8 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
 /* draw a sprite tile in x,y coordinates */
 void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 {
-    int p, x, y, i, j, pos, fb_x, off;
+    int_fast32_t x, y, pos, fb_x, off;
+    uint_fast16_t p, i, j;
     uint8_t  sprite_bytes;
     int16_t  tile_ptr;
     uint16_t *palette;
@@ -804,28 +818,25 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 /* update GPU internal state given CPU T-states */
 void gpu_step()
 {
-    char ly_changed = 0;
-    char mode_changed = 0;
-
     /* advance only in case of turned on display */
     if ((*gpu.lcd_ctrl).display == 0)
         return;
 
     /* update clock counter */
-//    if (global_double_speed)
-      gpu.clocks += gpu.step;
-//    else
-//        gpu.clocks += 4;
+    gpu.clocks -= gpu.step;
+   
+    if (gpu.clocks == 0)
+    { 
+        char ly_changed = 0;
+        char mode_changed = 0;
 
-    /* take different action based on current state */
-    switch((*gpu.lcd_status).mode)
-    {
-        /*
-         * during HBLANK (CPU can access VRAM)
-         */
-        case 0: /* check if an HBLANK is complete (201 t-states) */
-                if (gpu.clocks >= 204)
-                {
+        /* take different action based on current state */
+        switch((*gpu.lcd_status).mode)
+        {
+            /*
+             * during HBLANK (CPU can access VRAM)
+             */
+            case 0: 
                     /*
                      * if current line == 143 (and it's about to turn 144)
                      * enter mode 01 (VBLANK)
@@ -837,14 +848,14 @@ void gpu_step()
 
                         (*gpu.lcd_status).mode = 0x01;
 
+                        /* mode one lasts 456 cycles */
+                        gpu.clocks = 456;
+
                         /* DRAW! TODO */
                         /* CHECK INTERRUPTS! TODO */
 
                         /* set VBLANK interrupt flag */
                         gpu_if->lcd_vblank = 1;
-
-                        /* update frame in memory */
-                        // gpu_update_frame_buffer();
 
                         /* and finally push it on screen! */
                         gpu_draw_frame();
@@ -856,11 +867,10 @@ void gpu_step()
 
                         /* enter OAM mode */
                         (*gpu.lcd_status).mode = 0x02;
+
+                        /* mode 2 needs 80 cycles */
+                        gpu.clocks = 80;
                     }
-
-           //         gpu_draw_line(*gpu.ly);
-
-           //         printf("FINE HBLANK\n");
 
                     /* notify mode has changed */
                     ly_changed = 1;
@@ -869,19 +879,16 @@ void gpu_step()
                     (*gpu.ly)++;
 
                     /* reset clock counter */
-                    gpu.clocks -= 204;
-                }
+             //       gpu.clocks -= 204;
 
-                break;
+                    break;
 
-        /*
-         * during VBLANK (CPU can access VRAM)
-         */
-        case 1: /* check if an HBLANK is complete (456 t-states) */
-                if (gpu.clocks >= 456) 
-                {
+            /*
+             * during VBLANK (CPU can access VRAM)
+             */
+            case 1: 
                     /* reset clock counter */
-                    gpu.clocks -= 456;
+                    // gpu.clocks -= 456;
 
                     /* notify ly has changed */
                     ly_changed = 1;
@@ -897,37 +904,36 @@ void gpu_step()
 
                         /* switch to OAM mode */
                         (*gpu.lcd_status).mode = 0x02;
+
+                        /* */
+                        gpu.clocks = 80;
                     }
-                }
+                    else
+                        gpu.clocks = 456;
 
-                break;
+                    break;
 
-        /*
-         * during OAM (LCD access FE00-FE90, so CPU cannot)
-         */
-        case 2: /* check if an OAM is complete (80 t-states) */
-                if (gpu.clocks >= 80)
-                {
+            /*
+             * during OAM (LCD access FE00-FE90, so CPU cannot)
+             */
+            case 2: 
                     /* reset clock counter */
-                    gpu.clocks -= 80;
+                    gpu.clocks = 172;
 
                     /* notify mode has changed */
                     mode_changed = 1;
 
                     /* switch to VRAM mode */
                     (*gpu.lcd_status).mode = 0x03;
-                }
 
-                break;
+                    break;
 
-        /*
-         * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
-         */
-        case 3: /* check if a VRAM read is complete (172 t-states) */
-                if (gpu.clocks >= 172)
-                {
+            /*
+             * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
+             */
+            case 3: 
                     /* reset clock counter */
-                    gpu.clocks -= 172;
+                    gpu.clocks = 204;
 
                     /* notify mode has changed */
                     mode_changed = 1;
@@ -937,44 +943,43 @@ void gpu_step()
 
                     /* draw line */
                     gpu_draw_line(*gpu.ly);
-                }
 
-                break;
+                    break;
+        }
 
-    }
+        /* ly changed? is it the case to trig an interrupt? */
+        if (ly_changed)
+        {
+            /* check if we gotta trigger an interrupt */
+            if ((*gpu.ly) == (*gpu.lyc))
+            { 
+                /* set lcd status flags indicating there's a concidence */
+                (*gpu.lcd_status).ly_coincidence = 1;
 
-    /* ly changed? is it the case to trig an interrupt? */
-    if (ly_changed)
-    {
-        /* check if we gotta trigger an interrupt */
-        if ((*gpu.ly) == (*gpu.lyc))
-        { 
-            /* set lcd status flags indicating there's a concidence */
-            (*gpu.lcd_status).ly_coincidence = 1;
+                /* an interrupt is desiderable? */
+                if ((*gpu.lcd_status).ir_ly_coincidence)
+                    gpu_if->lcd_ctrl = 1;
+            }
+            else
+            {
+                /* set lcd status flags indicating there's NOT a concidence */
+                (*gpu.lcd_status).ly_coincidence = 0;
+            }
+        }
 
-            /* an interrupt is desiderable? */
-            if ((*gpu.lcd_status).ir_ly_coincidence)
+        /* mode changed? is is the case to trig an interrupt? */
+        if (mode_changed)
+        {
+            if ((*gpu.lcd_status).mode == 0x00 &&
+                (*gpu.lcd_status).ir_mode_00)
+                gpu_if->lcd_ctrl = 1;
+            else if ((*gpu.lcd_status).mode == 0x01 &&
+                     (*gpu.lcd_status).ir_mode_01)
+                gpu_if->lcd_ctrl = 1;
+            else if ((*gpu.lcd_status).mode == 0x02 &&
+                     (*gpu.lcd_status).ir_mode_10)
                 gpu_if->lcd_ctrl = 1;
         }
-        else
-        {
-            /* set lcd status flags indicating there's NOT a concidence */
-            (*gpu.lcd_status).ly_coincidence = 0;
-        }
-    }
-
-    /* mode changed? is is the case to trig an interrupt? */
-    if (mode_changed)
-    {
-        if ((*gpu.lcd_status).mode == 0x00 &&
-            (*gpu.lcd_status).ir_mode_00)
-            gpu_if->lcd_ctrl = 1;
-        else if ((*gpu.lcd_status).mode == 0x01 &&
-                 (*gpu.lcd_status).ir_mode_01)
-            gpu_if->lcd_ctrl = 1;
-        else if ((*gpu.lcd_status).mode == 0x02 &&
-                 (*gpu.lcd_status).ir_mode_10)
-            gpu_if->lcd_ctrl = 1;
     }
 }
 

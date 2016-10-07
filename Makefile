@@ -3,7 +3,7 @@ ifeq ($(OS),Windows_NT)
     LIBS=-lrt `sdl2-config --libs`
     CFLAGS+=-w 
 else
-    LIBS=-lrt -lSDL2
+    LIBS=-lrt -lSDL2 -pthread
 endif
 
 all: libpizza.a
