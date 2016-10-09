@@ -30,6 +30,7 @@ typedef void (*gpu_frame_ready_cb_t) ();
 void      gpu_dump_oam();
 uint16_t *gpu_get_frame_buffer();
 void      gpu_init(gpu_frame_ready_cb_t cb);
+void      gpu_reset();
 void      gpu_restore_stat(FILE *fp);
 void      gpu_save_stat(FILE *fp);
 void      gpu_save_fb(FILE *fp);
@@ -124,6 +125,8 @@ typedef struct gpu_s
     uint8_t   priority[160 * 144];
     uint8_t   palette_idx[160 * 144];
 
+    uint_fast32_t spare4;
+    uint_fast32_t spare5;
 } gpu_t;
 
 #endif

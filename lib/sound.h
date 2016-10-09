@@ -304,6 +304,9 @@ typedef struct sound_s
     uint_fast32_t   step_int;
     uint_fast32_t   step_int1000;
 
+    uint_fast32_t          spare;
+    uint_fast32_t          spare2;
+
 } sound_t;
 
 

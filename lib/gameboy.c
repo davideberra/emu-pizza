@@ -64,6 +64,9 @@ void gameboy_init()
     /* init sound (this will start audio thread) */
     sound_init();
 
+    /* reset GPU counters */
+    gpu_reset();
+
     /* reset to default values */
     mmu_write_no_cyc(0xFF05, 0x00);
     mmu_write_no_cyc(0xFF06, 0x00); 

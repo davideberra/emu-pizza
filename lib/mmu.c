@@ -137,6 +137,9 @@ typedef struct mmu_s {
     time_t  rtc_time;
     time_t  rtc_latch_time;
 
+    uint_fast32_t          spare7;
+    uint_fast32_t          spare8;
+
 } mmu_t;
 
 mmu_t mmu;

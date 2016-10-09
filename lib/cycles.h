@@ -37,7 +37,7 @@ void cycles_term();
 typedef struct cycles_s
 {
     /* am i init'ed? */
-    char                   inited;
+    uint_fast32_t          inited;
 
     /* ticks counter */
     uint_fast32_t          cnt;
@@ -47,6 +47,9 @@ typedef struct cycles_s
 
     /* handy for .... pfff */
     uint_fast32_t          mask;
+
+    uint_fast32_t          spare;
+    uint_fast32_t          spare2;
 
 } cycles_t;
 

@@ -58,6 +58,9 @@ typedef struct serial_s {
     /* counter */
     uint_fast32_t next;
 
+    uint_fast32_t          spare4;
+    uint_fast32_t          spare5;
+
 } serial_t;
 
 extern serial_t serial;

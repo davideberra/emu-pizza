@@ -34,7 +34,7 @@ void timer_init()
     timer.mod  = mmu_addr(0xFF06); 
     timer.ctrl = mmu_addr(0xFF07); */
 
-    timer.next = cycles.cnt + 256;
+    timer.next = 256;
     timer.sub = 0;
 	
     /* pointer to interrupt flags */

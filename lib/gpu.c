@@ -117,6 +117,15 @@ void gpu_init_pointers()
     gpu_if         = mmu_addr(0xFF0F);
 }
 
+/* reset */
+void gpu_reset()
+{
+    /* init counters */
+    gpu.next = 456 << global_cpu_double_speed;
+    gpu.frame_counter = 0;
+
+}
+
 /* init GPU states */
 void gpu_init(gpu_frame_ready_cb_t cb)
 {
@@ -126,10 +135,10 @@ void gpu_init(gpu_frame_ready_cb_t cb)
     /* init memory pointers */
     gpu_init_pointers();
 
-    /* init counters */ 
-    gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
+    /* init counters */
+    gpu.next = 456 << global_cpu_double_speed;
     gpu.frame_counter = 0;
- 
+
     /* step for normal CPU speed */
     gpu.step = 4;
 
