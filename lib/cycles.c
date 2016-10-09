@@ -24,6 +24,7 @@
 #include "serial.h"
 #include "sound.h"
 #include "timer.h"
+#include "interrupt.h"
 
 #include <errno.h>
 #include <semaphore.h>
@@ -39,6 +40,8 @@ timer_t           cycles_timer_id = 0;
 sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
+
+interrupts_flags_t *cycles_if;
 
 /* instance of the main struct */
 cycles_t cycles = { 0, 0, 0, 0 };
@@ -109,6 +112,9 @@ void cycles_step()
     /* update GPU state */
     gpu_step();
 
+    /* and finally sound */
+    sound_step();
+
     /* update timer state */
     timer_step();
 
@@ -116,12 +122,15 @@ void cycles_step()
     serial_step();
 
     /* and finally sound */
-    sound_step();
+    // sound_step();
 }
 
 char cycles_init()
 {
     cycles.inited = 1;
+
+    /* interrupt registers */
+    cycles_if = mmu_addr(0xFF0F);
 
     /* init clock and counter */
     cycles.clock = 4194304;
@@ -205,8 +214,6 @@ void cycles_term()
 
     /* destroy semaphore */
     sem_destroy(&cycles_sem);
-
-//    printf("MEDIA %lld MILLISEX\n", totaru / totaru_cnt); 
 }
 
 void cycles_save_stat(FILE *fp)

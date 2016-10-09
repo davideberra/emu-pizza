@@ -84,7 +84,7 @@ typedef struct gpu_s
     uint8_t   *lyc;
 
     /* clocks counter   */
-    uint_fast32_t  clocks;
+    uint_fast32_t   next;
 
     /* gpu step span */
     uint_fast32_t   step;
@@ -92,6 +92,7 @@ typedef struct gpu_s
     /* window last drawn lines */
     uint8_t   window_last_ly;
     uint8_t   window_skipped_lines;
+    uint16_t  spare;
 
     /* frame counter */
     uint_fast16_t  frame_counter;
@@ -108,12 +109,14 @@ typedef struct gpu_s
     uint16_t  cgb_palette_bg[0x20];
     uint8_t   cgb_palette_bg_idx;
     uint8_t   cgb_palette_bg_autoinc;
+    uint16_t  spare2;
 
     /* CGB palette for sprites */
     uint16_t  cgb_palette_oam_rgb565[0x20];
     uint16_t  cgb_palette_oam[0x20];
     uint8_t   cgb_palette_oam_idx;
     uint8_t   cgb_palette_oam_autoinc;
+    uint16_t  spare3;
 
     /* frame buffer     */
     uint16_t  frame_buffer_prev[160 * 144];

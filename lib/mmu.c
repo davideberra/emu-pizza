@@ -24,6 +24,8 @@
 #include "input.h"
 #include "mmu.h"
 #include "sound.h"
+#include "timer.h"
+#include "serial.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +90,9 @@ typedef struct mmu_s {
     uint8_t vram1[0x2000];
 
     /* vram current idx */
-    uint8_t vram_idx;
+    uint8_t  vram_idx;
+    uint8_t  spare;
+    uint16_t spare2;
 
     /* internal RAM */
     uint8_t ram_internal[0x2000];
@@ -112,6 +116,8 @@ typedef struct mmu_s {
 
     /* current WRAM bank (only CGB) */
     uint8_t wram_current_bank;
+    uint8_t  spare3;
+    uint16_t spare4;
 
     /* DMA transfer stuff */
     uint_fast16_t dma_address;
@@ -126,6 +132,8 @@ typedef struct mmu_s {
 
     /* RTC stuff */
     uint8_t rtc_mode;
+    uint8_t  spare5;
+    uint16_t spare6;
     time_t  rtc_time;
     time_t  rtc_latch_time;
 
@@ -276,7 +284,7 @@ uint8_t mmu_read_no_cyc(uint16_t a)
 /* read 8 bit data from a memory addres */
 uint8_t mmu_read(uint16_t a)
 {
-    read4000++;
+//    read4000++;
 
     /* always takes 4 cycles */
     cycles_step();
@@ -333,6 +341,11 @@ uint8_t mmu_read(uint16_t a)
 
     switch (a)
     {
+        /* serial registers */
+        case 0xFF01: 
+        case 0xFF02: 
+            return serial_read_reg(a);
+
         /* don't ask me why.... */
         case 0xFF44:
             return (mmu.memory[0xFF44] == 153 ? 0 : mmu.memory[0xFF44]);
@@ -367,6 +380,10 @@ uint8_t mmu_read(uint16_t a)
             /* color palettes registers */
             return gpu_read_reg(a);
 
+        /* timer registers */
+        case 0xFF04 ... 0xFF07:
+            return timer_read_reg(a);      
+      
     }
 
     return mmu.memory[a];
@@ -849,12 +866,24 @@ void mmu_write(uint16_t a, uint8_t v)
             return;
         } 
 
+        /* TODO - put them all */
+        switch(a)
+        { 
+            case 0xFF01: 
+            case 0xFF02:
+                serial_write_reg(a, v);
+                return;
+            case 0xFF04 ... 0xFF07:
+                timer_write_reg(a, v);
+                return;
+        }
+
         /* resetting timer DIV */
-        if (a == 0xFF04)
+/*        if (a == 0xFF04)
         {
             mmu.memory[a] = 0x00;
             return;
-        }
+        }*/
 
         /* LCD turned on/off? */
         if (a == 0xFF40)

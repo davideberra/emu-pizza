@@ -24,15 +24,42 @@
 
 void serial_init();
 void serial_step();
+void serial_write_reg(uint16_t a, uint8_t v);
+uint8_t serial_read_reg(uint16_t a);
 void serial_save_stat(FILE *fp);
 void serial_restore_stat(FILE *fp);
 
 typedef struct serial_ctrl_s
 { 
-    uint8_t clock:1;
-    uint8_t speed:1;
-    uint8_t spare:5;
-    uint8_t transfer_start:1;
+    uint8_t clock;
+    uint8_t speed;
+    uint8_t spare;
+    uint8_t transfer_start;
 } serial_ctrl_t;
+
+typedef struct serial_s {
+
+    /* pointer to serial controller register */
+    // serial_ctrl_t  ctrl;
+
+    uint8_t clock;
+    uint8_t speed;
+    uint8_t spare;
+    uint8_t transfer_start;
+
+    /* pointer to FF01 data */
+    uint8_t  data;
+
+    /* sent bits */
+    uint8_t  bits_sent;
+    uint8_t  spare2;
+    uint8_t  spare3;
+
+    /* counter */
+    uint_fast32_t next;
+
+} serial_t;
+
+extern serial_t serial;
 
 #endif

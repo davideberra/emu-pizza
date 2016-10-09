@@ -45,14 +45,14 @@ int sound_output_rate_fifth = 48000 / 5;
 size_t sound_available_samples();
 void   sound_envelope_step();
 void   sound_length_ctrl_step();
+void   sound_push_samples(int16_t l, int16_t r);
 void   sound_push_sample(int16_t s);
 void   sound_read_samples(int len, int16_t *buf);
 void   sound_rebuild_wave();
 void   sound_sweep_step();
 void   sound_term();
 void   sound_write_wave(uint16_t a, uint8_t v);
-
-int frames = 0;
+// void static inline sound_push_sample(int16_t s);
 
 int sound_get_samples()
 {
@@ -116,10 +116,22 @@ void sound_init()
     /* how many cpu cycles we need to emit a 512hz clock (frame sequencer) */
     sound.fs_cycles = 4194304 / 512;
 
+//    char log[64];
+//    sprintf(log, "FUCILATO %d", sound.sample_cycles_next_rounded);
+
     /* how many cpu cycles to generate a single sample? */
-    sound.sample_cycles = ((double) 4194304 / sound_output_rate) * 1000;
-    sound.fs_cycles_cnt = sound.fs_cycles;
-    sound.sample_cycles_cnt = 0;
+    // sound.sample_cycles = ((double) 4194304 / sound_output_rate) * 1000;
+    sound.fs_cycles_next = sound.fs_cycles;
+
+    sound.sample_cycles = (uint_fast32_t) (((double) 4194304 /
+                                            (double) sound_output_rate) * 1000);
+
+    sound.sample_cycles_next = sound.sample_cycles / 1000;
+    sound.sample_cycles_next_rounded = sound.sample_cycles_next & 0xFFFFFFFC;
+
+//    sound.sample_cycles_next = sound.sample_cycles / 1000;
+//    sound.sample_cycles_remainder = 0;
+//    printf("SAMPLE CYC NEXT %f\n", sound.sample_cycles);
     
     /* init multiplier */
     sound.frame_multiplier = 1;
@@ -130,6 +142,9 @@ void sound_init()
 
 void sound_set_speed(char dbl)
 {
+
+	return;
+
     if (dbl)
     {
         sound.step_int = 2;
@@ -155,20 +170,21 @@ void sound_change_emulation_speed()
 /* update sound internal state given CPU T-states */
 void sound_step()
 {
-    sound.fs_cycles_cnt -= sound.step_int;
-    sound.sample_cycles_cnt += sound.step_int1000;
+    // sound.fs_cycles_cnt -= 4; // sound.step_int;
+//    sound.sample_cycles_cnt += 4000; // sound.step_int1000;
 
     if (sound.channel_three.ram_access)
-        sound.channel_three.ram_access -= sound.step_int;
+        sound.channel_three.ram_access -= 4; //sound.step_int;
 
     /* frame sequencer runs at 512 hz - 8192 ticks at standard CPU speed */
-    if (sound.fs_cycles_cnt == 0)
+    if (sound.fs_cycles_next == cycles.cnt)
     {
         /* rotate from 0 to 7 */
         sound.fs_cycles_idx = (sound.fs_cycles_idx + 1) & 0x07;
 
         /* reset fs cycles counter */
-        sound.fs_cycles_cnt = sound.fs_cycles;
+        sound.fs_cycles_next = cycles.cnt + 
+		               (sound.fs_cycles << global_cpu_double_speed);
 
         /* length controller works at 256hz */
         if ((sound.fs_cycles_idx & 0x01) == 0)
@@ -188,11 +204,12 @@ void sound_step()
     /* update channel one */
     if (sound.channel_one.active)
     {
-        sound.channel_one.duty_cycles_cnt += 2;
+//        sound.channel_one.duty_cycles_cnt += 4;
+
+//	    printf("DUTY CYCLES NEXT %d - %d\n", sound.channel_one.duty_cycles_next, cycles.cnt);
 
         /* enough CPU cycles to trigger a duty step? */
-        if (sound.channel_one.duty_cycles_cnt == 
-            sound.channel_one.duty_cycles)
+        if (sound.channel_one.duty_cycles_next == cycles.cnt)
         {
             /* recalc current samples */
             if ((sound.channel_one.duty >> sound.channel_one.duty_idx) & 0x01)
@@ -205,18 +222,17 @@ void sound_step()
                 (sound.channel_one.duty_idx + 1) & 0x07;
 
             /* go back */
-            sound.channel_one.duty_cycles_cnt -= sound.channel_one.duty_cycles;
+            sound.channel_one.duty_cycles_next += sound.channel_one.duty_cycles;
         }
     }
 
     /* update channel two */
     if (sound.channel_two.active)
     {
-        sound.channel_two.duty_cycles_cnt += 2;
+//        sound.channel_two.duty_cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a duty step? */
-        if (sound.channel_two.duty_cycles_cnt >=
-            sound.channel_two.duty_cycles)
+        if (sound.channel_two.duty_cycles_next == cycles.cnt)
         {
             /* recalc current samples */
             if ((sound.channel_two.duty >> sound.channel_two.duty_idx) & 0x01)
@@ -229,18 +245,19 @@ void sound_step()
                 (sound.channel_two.duty_idx + 1) & 0x07;
 
             /* go back */
-            sound.channel_two.duty_cycles_cnt -= sound.channel_two.duty_cycles;
+            sound.channel_two.duty_cycles_next += sound.channel_two.duty_cycles;
         }
     }
 
     /* update channel three */
     if (sound.channel_three.active)
     {
-        sound.channel_three.cycles_cnt += 4;
+//        sound.channel_three.cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a wave table step? */
-        if (sound.channel_three.cycles_cnt >=
-            sound.channel_three.cycles)
+ //       if (sound.channel_three.cycles_cnt >=
+ //           sound.channel_three.cycles)
+        if (sound.channel_three.cycles_next <= cycles.cnt)
         {
             /* switch to the next wave sample */
             sound.channel_three.index = (sound.channel_three.index + 1) & 0x1F;
@@ -250,7 +267,8 @@ void sound_step()
                 sound.channel_three.wave[sound.channel_three.index];
 
             /* go back */
-            sound.channel_three.cycles_cnt -= sound.channel_three.cycles;
+//            sound.channel_three.cycles_next += -= sound.channel_three.cycles;
+//            sound.channel_three.cycles_next -= cycles.cnt - sound.channel_three.cycles_next;
 
             /* reload new period */
             uint_fast16_t freq = sound.nr33->frequency_lsb |
@@ -259,18 +277,18 @@ void sound_step()
             sound.channel_three.frequency = freq; 
 
             /* qty of cpu ticks needed for a wave sample change */
-            sound.channel_three.cycles = (2048 - freq) * 2; 
+            sound.channel_three.cycles = ((2048 - freq) * 2) << global_cpu_double_speed; 
+            sound.channel_three.cycles_next += sound.channel_three.cycles;
         }
     }
 
     /* update channel four */
     if (sound.channel_four.active)
     {
-        sound.channel_four.cycles_cnt += 4;
+//        sound.channel_four.cycles_cnt += 4;
 
         /* enough CPU cycles to trigger a LFSR step? */
-        if (sound.channel_four.cycles_cnt >=
-            sound.channel_four.period_lfsr)
+        if (sound.channel_four.cycles_next == cycles.cnt)
         {
             /* update LSFR */
             if (sound.nr43->shift < 14)
@@ -298,19 +316,26 @@ void sound_step()
                 sound.channel_four.sample = sound.channel_four.volume;
  
             /* qty of cpu ticks needed for a wave sample change */
-            sound.channel_four.cycles_cnt -= sound.channel_four.period_lfsr; 
+            sound.channel_four.cycles_next += sound.channel_four.period_lfsr; 
         }
     }
 
-    /* enough cpu cycles to generate a single frame? */
-    if (sound.sample_cycles_cnt >= sound.sample_cycles)
-    {
-        int16_t sample_left = 0;
-        int16_t sample_right = 0;
-        int16_t sample = 0;
+ /*   char log[64];
+    sprintf(log, "BOOOOH %d - %d", sound.sample_cycles_next_rounded, cycles.cnt);
+     __android_log_write(ANDROID_LOG_ERROR, "Pizza", log); */
 
-        /* go back */
-        sound.sample_cycles_cnt -= sound.sample_cycles;
+    /* enough cpu cycles to generate a single frame? */
+    if (sound.sample_cycles_next_rounded == cycles.cnt)
+    {
+        // sound.sample_cycles_
+	uint_fast32_t zum = sound.sample_cycles + sound.sample_cycles_remainder;
+
+        sound.sample_cycles_next += ((zum / 1000) << global_cpu_double_speed);
+        sound.sample_cycles_next_rounded = 
+		sound.sample_cycles_next & 0xFFFFFFFC;
+        sound.sample_cycles_remainder = zum % 1000;
+
+//	printf("BAO\n");
 
         /* update output frame counter */
         sound.frame_counter++;
@@ -328,10 +353,13 @@ void sound_step()
             sound.channel_two.active == 0 && 
             sound.channel_four.active == 0) 
         { 
-            sound_push_sample((int16_t) 0x0000);
-            sound_push_sample((int16_t) 0x0000);
+            sound_push_samples(0, 0);
             return;
         } 
+
+        int16_t sample_left = 0;
+        int16_t sample_right = 0;
+        int16_t sample = 0;
 
         /* time to generate a sample! sum all the fields */
         if (sound.channel_one.active) // && sound.channel_one.sample)
@@ -418,8 +446,7 @@ void sound_step()
         for (i=0; i<sound.frame_multiplier; i++)
         { 
             /* push the sum of all channels samples */
-            sound_push_sample(sample_left);
-            sound_push_sample(sample_right);
+            sound_push_samples(sample_left, sample_right);
         }
     }
 }
@@ -467,17 +494,51 @@ void sound_read_buffer(void *userdata, uint8_t *stream, int snd_len)
     sound_read_samples(snd_len / 2, (int16_t *) stream);
 }
 
+void sound_push_samples(int16_t l, int16_t r)
+{
+    /* store them in tmp buffer */	
+    sound.buf_tmp[sound.buf_tmp_wr++] = l;
+    sound.buf_tmp[sound.buf_tmp_wr++] = r;
+
+    if (sound.buf_tmp_wr == SOUND_BUF_TMP_SZ)
+    {
+        unsigned int i;
+
+	    /* since we're accessing a shared buffer, lock it */
+        pthread_mutex_lock(&sound_mutex);
+
+        /* put them in circular shared buffer */
+	    for (i=0; i<SOUND_BUF_TMP_SZ; i++)
+            sound_push_sample(sound.buf_tmp[i]);
+
+	    /* reset counter */
+	    sound.buf_tmp_wr = 0;
+   
+        /* set it free */	
+        pthread_mutex_unlock(&sound_mutex);
+    }	    
+
+    /* lock the buffer */
+    // pthread_mutex_lock(&sound_mutex);
+ 
+//    sound_push_sample(l);
+//    sound_push_sample(r);
+
+    /* unlock it */
+    // pthread_mutex_unlock(&sound_mutex);
+}
+
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
     /* lock the buffer */
-    pthread_mutex_lock(&sound_mutex);
+//    pthread_mutex_lock(&sound_mutex);
   
     /* assign sample value */ 
     sound.buf[sound.buf_wr] = s;
 
     /* update write index */
-    sound.buf_wr++; 
+    sound.buf_wr++;   
 
     if (sound.buf_wr == SOUND_BUF_SZ)
         sound.buf_wr = 0;
@@ -507,7 +568,7 @@ void sound_push_sample(int16_t s)
     }
 
     /* unlock it */
-    pthread_mutex_unlock(&sound_mutex);
+//    pthread_mutex_unlock(&sound_mutex);
 }
 
 /* calculate the available samples in circula buffer */
@@ -544,7 +605,7 @@ void sound_read_samples(int len, int16_t *buf)
             pthread_cond_wait(&sound_cond, &sound_mutex);
     }
 
-    if (sound.buf_rd + to_read > SOUND_BUF_SZ)
+    if (sound.buf_rd + to_read >= SOUND_BUF_SZ)
     {
         /* overlaps the end of the buffer? copy in 2 phases */
         size_t first_block = SOUND_BUF_SZ - sound.buf_rd;
@@ -625,10 +686,12 @@ void sound_set_frequency(uint_fast32_t new_freq)
     sound.nr14->frequency_msb = (uint8_t) ((new_freq >> 8) & 0x00000007);
 
     /* update the duty cycles */
-    sound.channel_one.duty_cycles = (2048 - new_freq) * 4;
+    sound.channel_one.duty_cycles = 
+	    ((2048 - new_freq) * 4) << global_cpu_double_speed;
 
     /* and reset them */
-    sound.channel_one.duty_cycles_cnt = 0;
+    sound.channel_one.duty_cycles_next = 
+	    cycles.cnt + sound.channel_one.duty_cycles;
 }
 
 /* step of frequency sweep at 128hz */
@@ -833,12 +896,16 @@ uint8_t sound_read_reg(uint16_t a, uint8_t v)
 void sound_set_output_rate(int freq)
 {
     sound_output_rate = freq;
+    sound_output_rate_fifth = freq / 5;
 
     double cpu_base_freq = 4194304;
 
     /* calc cycles needed to generate a sample */
-    sound.sample_cycles = ((double) cpu_base_freq / 
-                           (double) sound_output_rate) * 1000;
+    sound.sample_cycles = (uint_fast32_t) (((double) cpu_base_freq /
+                           (double) sound_output_rate) * 1000);
+
+    sound.sample_cycles_next = sound.sample_cycles / 1000;
+    sound.sample_cycles_next_rounded = sound.sample_cycles_next & 0xFFFFFFFC;
 }
 
 void sound_write_reg(uint16_t a, uint8_t v)
@@ -927,7 +994,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
             /* update duty cycles */
             sound.channel_one.duty_cycles =
-                (2048 - sound.channel_one.frequency) * 4;
+                ((2048 - sound.channel_one.frequency) * 4) 
+		<< global_cpu_double_speed;
 
             break;
 
@@ -957,7 +1025,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
             /* qty of cpu ticks needed for a duty change */
             /* (1/8 of wave cycle) */
             sound.channel_one.duty_cycles = 
-                (2048 - sound.channel_one.frequency) * 4;
+                ((2048 - sound.channel_one.frequency) * 4) << global_cpu_double_speed;
 
             if (v & 0x80) 
             {
@@ -970,6 +1038,10 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_one.active = 1;
+                sound.channel_one.duty_cycles_next = 
+         	    cycles.cnt + sound.channel_one.duty_cycles;
+
+// PDIO                sound.channel_one.active = 1;
 //                sound.channel_one.frequency = freq;
 
                 /* qty of cpu ticks needed for a duty change */
@@ -1099,7 +1171,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
             /* update duty cycles */
             sound.channel_two.duty_cycles =
-                (2048 - sound.channel_two.frequency) * 4;
+                ((2048 - sound.channel_two.frequency) * 4) << global_cpu_double_speed;
 
             break;
 
@@ -1129,7 +1201,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
             /* qty of cpu ticks needed for a duty change */ 
             /* (1/8 of wave cycle) */
             sound.channel_two.duty_cycles = 
-                (2048 - sound.channel_two.frequency) * 4;
+                ((2048 - sound.channel_two.frequency) * 4) << global_cpu_double_speed;
 
             if (v & 0x80) 
             {
@@ -1142,6 +1214,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_two.active = 1;
+                sound.channel_two.duty_cycles_next = 
+         	    cycles.cnt + sound.channel_two.duty_cycles;
 //                sound.channel_two.frequency = freq;
 
                 /* qty of cpu ticks needed for a duty change */ 
@@ -1248,12 +1322,18 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_three.active = 1;
                 sound.channel_three.frequency = freq;
 
+		uint_fast32_t old_cycles = sound.channel_three.cycles;
+
                 /* qty of cpu ticks needed for a wave sample change */
-                sound.channel_three.cycles = ((2048 - freq) * 2) + 6; // * 2;
+                sound.channel_three.cycles = 
+			(((2048 - freq) * 2) + 6) << global_cpu_double_speed; 
+
 
                 /* treat obscure behaviours.... */
-                if (sound.channel_three.cycles ==
-                    sound.channel_three.cycles_cnt + 8)
+                if (cycles.cnt + 8 == 
+				sound.channel_three.cycles_next + 
+				sound.channel_three.cycles - 
+				old_cycles)
                 {
                     uint8_t next = 
                         ((sound.channel_three.index + 1) & 0x1F) >> 1;
@@ -1267,7 +1347,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* init wave table index */
                 sound.channel_three.index = 0;
-                sound.channel_three.cycles_cnt = 0;
+		sound.channel_three.cycles_next = 
+			cycles.cnt + sound.channel_three.cycles;
 
                 /* calc length */
                 if (sound.channel_three.length == 0)
@@ -1350,6 +1431,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* calc LFSR period */
                 sound.channel_four.period_lfsr = divisor << sound.nr43->shift;
+                sound.channel_four.cycles_next = 
+			cycles.cnt + sound.channel_four.period_lfsr;
 
                 /* init reg to all bits to 1 */
                 sound.channel_four.reg = 0x7FFF;

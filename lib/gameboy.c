@@ -157,6 +157,9 @@ void gameboy_run()
     /* init */
     // gameboy_init();
 
+    /* reset counter */
+    cycles.cnt = 0;
+
     /* get interrupt flags and interrupt enables */
     uint8_t *int_e;
     uint8_t *int_f;
@@ -283,7 +286,7 @@ void gameboy_run()
     cartridge_term();
     sound_term();
     mmu_term();
- 
+
     return; 
 }
 
@@ -337,6 +340,7 @@ char gameboy_restore_stat(int idx)
     gpu_restore_stat(fp);
     serial_restore_stat(fp);
     mmu_restore_stat(fp);
+    cycles_restore_stat(fp);
 
     fclose(fp);
 
@@ -370,6 +374,7 @@ char gameboy_save_stat(int idx)
     gpu_save_stat(fp);
     serial_save_stat(fp);
     mmu_save_stat(fp);
+    cycles_save_stat(fp);
 
     fclose(fp);
 

@@ -92,7 +92,7 @@ int main(int argc, char **argv)
 
     /* initialize SDL audio */
     SDL_Init(SDL_INIT_AUDIO);
-    desired.freq = SOUND_FREQ_MAX;
+    desired.freq = 44100;
     desired.samples = SOUND_SAMPLES;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     gpu_init(&cb);
 
     /* set sound output rate */
-    sound_set_output_rate(SOUND_FREQ_MAX);
+    sound_set_output_rate(44100);
 
     /* get frame buffer reference */
     fb = gpu_get_frame_buffer();    

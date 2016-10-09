@@ -17,6 +17,7 @@
 
 */
 
+#include "cycles.h"
 #include "global.h"
 #include "interrupt.h"
 #include "mmu.h"
@@ -126,7 +127,7 @@ void gpu_init(gpu_frame_ready_cb_t cb)
     gpu_init_pointers();
 
     /* init counters */ 
-    gpu.clocks = 456;
+    gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
     gpu.frame_counter = 0;
  
     /* step for normal CPU speed */
@@ -148,7 +149,7 @@ void gpu_toggle(uint8_t state)
     if (state & 0x80)
     {
         /* LCD turned on */
-        gpu.clocks = 456;
+        gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
         *gpu.ly  = 0;
         (*gpu.lcd_status).mode = 0x00;
         (*gpu.lcd_status).ly_coincidence = 0x00;
@@ -156,7 +157,7 @@ void gpu_toggle(uint8_t state)
     else
     {
         /* LCD turned off - reset stuff */
-        gpu.clocks = 456;
+        gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
         *gpu.ly = 0;
         (*gpu.lcd_status).mode = 0x00;
     }
@@ -822,10 +823,7 @@ void gpu_step()
     if ((*gpu.lcd_ctrl).display == 0)
         return;
 
-    /* update clock counter */
-    gpu.clocks -= gpu.step;
-   
-    if (gpu.clocks == 0)
+    if (gpu.next == cycles.cnt)
     { 
         char ly_changed = 0;
         char mode_changed = 0;
@@ -849,7 +847,8 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x01;
 
                         /* mode one lasts 456 cycles */
-                        gpu.clocks = 456;
+                        gpu.next = 
+			    cycles.cnt + (456 << global_cpu_double_speed);
 
                         /* DRAW! TODO */
                         /* CHECK INTERRUPTS! TODO */
@@ -869,7 +868,8 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x02;
 
                         /* mode 2 needs 80 cycles */
-                        gpu.clocks = 80;
+                        gpu.next = 
+			    cycles.cnt + (80 << global_cpu_double_speed);
                     }
 
                     /* notify mode has changed */
@@ -906,10 +906,12 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x02;
 
                         /* */
-                        gpu.clocks = 80;
+                        gpu.next = 
+			    cycles.cnt + (80 << global_cpu_double_speed);
                     }
                     else
-                        gpu.clocks = 456;
+                        gpu.next = 
+			    cycles.cnt + (456 << global_cpu_double_speed);
 
                     break;
 
@@ -918,7 +920,8 @@ void gpu_step()
              */
             case 2: 
                     /* reset clock counter */
-                    gpu.clocks = 172;
+                    gpu.next = 
+	                cycles.cnt + (172 << global_cpu_double_speed);
 
                     /* notify mode has changed */
                     mode_changed = 1;
@@ -933,7 +936,8 @@ void gpu_step()
              */
             case 3: 
                     /* reset clock counter */
-                    gpu.clocks = 204;
+                    gpu.next = 
+	                cycles.cnt + (204 << global_cpu_double_speed);
 
                     /* notify mode has changed */
                     mode_changed = 1;

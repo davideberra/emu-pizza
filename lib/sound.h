@@ -22,7 +22,8 @@
 
 #define SOUND_FREQ_MAX    48000
 #define SOUND_SAMPLES SOUND_FREQ_MAX / 10
-#define SOUND_BUF_SZ  (SOUND_SAMPLES * 3)
+#define SOUND_BUF_SZ (SOUND_SAMPLES * 3)
+#define SOUND_BUF_TMP_SZ (SOUND_SAMPLES / 2)
 
 typedef struct nr10_s
 {
@@ -189,21 +190,23 @@ typedef struct nr52_s
 
 typedef struct channel_square_s
 {
-    uint8_t  active;
-    uint8_t  duty;
-    uint8_t  duty_idx;
-    uint8_t  envelope_cnt;
-    uint16_t duty_cycles;
-    uint16_t duty_cycles_cnt;
-    uint32_t length;
+    uint8_t       active;
+    uint8_t       duty;
+    uint8_t       duty_idx;
+    uint8_t       envelope_cnt;
+    uint_fast16_t duty_cycles;
+    uint_fast16_t duty_cycles_next;
+    uint32_t      length;
     uint_fast32_t frequency;
-    int16_t  sample;
-    uint_fast16_t  sweep_active;
-    uint_fast16_t  sweep_cnt;
-    uint_fast16_t  sweep_neg;
-    uint_fast16_t  sweep_next;
-    int16_t  volume;
-    uint32_t sweep_shadow_frequency;
+    int16_t       sample;
+    int16_t       spare;
+    uint_fast16_t sweep_active;
+    uint_fast16_t sweep_cnt;
+    uint_fast16_t sweep_neg;
+    uint_fast16_t sweep_next;
+    int16_t       volume;
+    int16_t       spare2;
+    uint32_t      sweep_shadow_frequency;
 
 } channel_square_t;
 
@@ -213,9 +216,10 @@ typedef struct channel_wave_s
     uint8_t  index;
     uint16_t ram_access;
     int16_t  sample;
+    int16_t  spare;
     int16_t  wave[32];
-    uint_fast16_t cycles;
-    uint_fast16_t cycles_cnt;
+    uint_fast32_t cycles;
+    uint_fast32_t cycles_next;
     uint_fast32_t frequency;
     uint_fast32_t length;
 
@@ -223,14 +227,16 @@ typedef struct channel_wave_s
 
 typedef struct channel_noise_s
 {
-    uint8_t  active;
-    uint8_t  envelope_cnt;
+    uint8_t       active;
+    uint8_t       envelope_cnt;
+    uint16_t      spare;
     uint_fast32_t length;
     uint_fast16_t period_lfsr;
-    uint_fast16_t cycles_cnt;
-    int16_t  volume;
-    int16_t  sample;
-    uint16_t reg;
+    uint_fast32_t cycles_next;
+    int16_t       volume;
+    int16_t       sample;
+    uint16_t      reg;
+    uint16_t      spare2;
  
 } channel_noise_t;
 
@@ -264,36 +270,39 @@ typedef struct sound_s
 
     uint8_t              *wave_table;
 
-    channel_square_t      channel_one;    
-    channel_square_t      channel_two;    
-    channel_wave_t        channel_three;
-    channel_noise_t       channel_four;
+    channel_square_t  channel_one;    
+    channel_square_t  channel_two;    
+    channel_wave_t    channel_three;
+    channel_noise_t   channel_four;
 
     /* emulation speed stuff */
-    uint_fast16_t         frame_counter;
-    uint_fast16_t         frame_multiplier;
+    uint_fast16_t     frame_counter;
+    uint_fast16_t     frame_multiplier;
 
     /* circular audio buffer stuff */
-    uint_fast16_t   buf_rd;
-    uint_fast16_t   buf_wr;
-    uint_fast16_t   buf_available;
-    uint_fast16_t   buf_empty; 
-    int16_t  buf[SOUND_BUF_SZ];
+    uint_fast16_t     buf_rd;
+    uint_fast16_t     buf_wr;
+    uint_fast16_t     buf_available;
+    uint_fast16_t     buf_empty; 
+    int16_t           buf[SOUND_BUF_SZ];
+    int16_t           buf_tmp[SOUND_BUF_TMP_SZ];
+    uint_fast16_t     buf_tmp_wr;
 
     /* output rate */
-    uint_fast32_t   output_rate;
+    uint_fast32_t     output_rate;
 
     /* CPU cycles to internal cycles counters */
-    uint_fast32_t fs_cycles;
-    uint_fast32_t fs_cycles_idx;
-    uint_fast32_t fs_cycles_cnt;
-    uint_fast32_t sample_cycles;
-    uint_fast32_t sample_cycles_cnt;
+    uint_fast32_t     fs_cycles;
+    uint_fast32_t     fs_cycles_idx;
+    uint_fast32_t     fs_cycles_next;
+    uint_fast32_t     sample_cycles;
+    uint_fast32_t     sample_cycles_remainder;
+    uint_fast32_t     sample_cycles_next;
+    uint_fast32_t     sample_cycles_next_rounded;
 
     /* steps length */
-    uint_fast32_t      step_int;
-    uint_fast32_t      step_int1000;
-//    double   step_double;
+    uint_fast32_t   step_int;
+    uint_fast32_t   step_int1000;
 
 } sound_t;
 

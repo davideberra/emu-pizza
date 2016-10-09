@@ -23,31 +23,36 @@
 #include <stdint.h>
 
 /* prototypes */
-void timer_init();
-void timer_step();
+void    timer_init();
+void    timer_step();
+void    timer_write_reg(uint16_t a, uint8_t v);
+uint8_t timer_read_reg(uint16_t a);
 
 /* Gameboy Timer status */
-typedef struct gameboy_timer_s
+typedef struct timer_gb_s
 {
     /* divider - 0xFF04 */
-    uint8_t *div;
+    uint8_t div;
 
     /* counter - 0xFF05 */
-    uint8_t *cnt;
+    uint8_t cnt;
 
     /* modulo  - 0xFF06 */
-    uint8_t *mod;
+    uint8_t mod;
 
     /* control - 0xFF07 */
-    uint8_t *ctrl;
+    uint8_t ctrl;
+
+    /* threshold */
+    uint32_t threshold;
 
     /* current value    */
     uint_fast32_t sub;
-    uint_fast32_t div_sub;
+    uint_fast32_t next;
 
-} gameboy_timer_t;
+} timer_gb_t;
 
 /* global status of timer */
-gameboy_timer_t timer;
+timer_gb_t timer;
 
 #endif
