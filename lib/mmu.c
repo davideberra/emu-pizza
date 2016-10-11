@@ -49,15 +49,6 @@
 
 */
 
-/* cartridge type */
-// uint8_t carttype;
-
-/* number of switchable roms */
-// uint8_t roms;
-
-/* system memory (!= cartridge memory) */
-// uint8_t memory[65536];
-
 /* cartridge memory (max 8MB) */
 uint8_t cart_memory[1 << 22];
 
@@ -65,85 +56,8 @@ uint8_t cart_memory[1 << 22];
 uint8_t *ram;
 uint32_t ram_sz;
 
-/* current bank in case of MBC controller */
-// uint8_t rom_current_bank = 1;
-// uint8_t ram_current_bank = 0;
-
-/* banking mode - 0 ROM, 1 RAM */
-// uint8_t banking = 0;
-
-/* DMA counter and address */
-// uint16_t mmu_dma_address = 0;
-// uint16_t mmu_dma_cycles = 0;
-
-uint32_t read4000 =0;
-uint32_t read8000 =0;
-uint32_t readelse =0;
-
-typedef struct mmu_s {
-
-    /* main 64K of memory */
-    uint8_t memory[65536];
-    
-    /* vram in standby */
-    uint8_t vram0[0x2000];
-    uint8_t vram1[0x2000];
-
-    /* vram current idx */
-    uint8_t  vram_idx;
-    uint8_t  spare;
-    uint16_t spare2;
-
-    /* internal RAM */
-    uint8_t ram_internal[0x2000];
-    uint8_t ram_external_enabled;
-    uint8_t ram_current_bank;
-
-    /* cartridge type */
-    uint8_t carttype;
-
-    /* number of switchable roms */
-    uint8_t roms;
-
-    /* current ROM bank */
-    uint8_t rom_current_bank;
-
-    /* type of banking */
-    uint8_t banking;
-
-    /* working RAM (only CGB) */
-    uint8_t wram[0x8000];
-
-    /* current WRAM bank (only CGB) */
-    uint8_t wram_current_bank;
-    uint8_t  spare3;
-    uint16_t spare4;
-
-    /* DMA transfer stuff */
-    uint_fast16_t dma_address;
-    uint_fast16_t dma_cycles;
-
-    /* HDMA transfer stuff */
-    uint16_t hdma_src_address;
-    uint16_t hdma_dst_address;
-    uint16_t hdma_to_transfer;
-    uint8_t  hdma_transfer_mode;
-    uint8_t  hdma_current_line;
-
-    /* RTC stuff */
-    uint8_t rtc_mode;
-    uint8_t  spare5;
-    uint16_t spare6;
-    time_t  rtc_time;
-    time_t  rtc_latch_time;
-
-    uint_fast32_t          spare7;
-    uint_fast32_t          spare8;
-
-} mmu_t;
-
+/* main struct */
 mmu_t mmu;
-
 
 /* init (alloc) system state.memory */
 void mmu_init(uint8_t c, uint8_t rn)
@@ -179,60 +93,6 @@ void mmu_init_ram(uint32_t c)
     ram = malloc(c);
 
     bzero(ram, c);
-}
-
-/* update DMA internal state given CPU T-states */
-void mmu_step()
-{
-    /* DMA */
-    if (mmu.dma_address != 0x0000)
-    {
-        mmu.dma_cycles -= 4;
-    
-        /* enough cycles passed? */
-        if (mmu.dma_cycles == 0)
-        {
-            memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
-
-            /* reset address */
-            mmu.dma_address = 0x0000;
-
-            /* DEBUG */
-            // gpu_dump_oam();
-        }
-    }
-
-    /* HDMA (only CGB) */
-    if (global_cgb && mmu.hdma_to_transfer)
-    {
-        /* hblank transfer */
-        if (mmu.hdma_transfer_mode)
-        {
-            /* transfer when line is changed and we're into HBLANK phase */
-            if (mmu.memory[0xFF44] < 143 && 
-                mmu.hdma_current_line != mmu.memory[0xFF44] && 
-                (mmu.memory[0xFF41] & 0x03) == 0x00)
-            {
-                /* update current line */
-                mmu.hdma_current_line = mmu.memory[0xFF44];
-
-                /* copy 0x10 bytes */
-                if (mmu.vram_idx)
-                    memcpy(mmu_addr_vram1() + mmu.hdma_dst_address - 0x8000,
-                           &mmu.memory[mmu.hdma_src_address], 0x10);
-                else
-                    memcpy(mmu_addr_vram0() + mmu.hdma_dst_address - 0x8000,
-                           &mmu.memory[mmu.hdma_src_address], 0x10);
-
-                /* decrease bytes to transfer */
-                mmu.hdma_to_transfer -= 0x10;
-
-                /* increase pointers */
-                mmu.hdma_dst_address += 0x10;
-                mmu.hdma_src_address += 0x10;
-            }
-        }
-    }
 }
 
 /* load data in a certain address */

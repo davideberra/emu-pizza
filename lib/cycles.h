@@ -23,6 +23,27 @@
 #include <stdint.h>
 #include <stdio.h>
 
+typedef struct cycles_s
+{
+    /* am i init'ed? */
+    uint_fast32_t          inited;
+    
+    /* ticks counter */
+    uint_fast32_t          cnt;
+
+    /* CPU clock */
+    uint_fast32_t          clock;
+
+    /* handy for calculation */
+    uint_fast32_t          mask;
+
+    uint_fast32_t          spare;
+    uint_fast32_t          spare2;
+
+} cycles_t;
+
+extern cycles_t cycles;
+
 /* prototypes */
 void cycles_change_emulation_speed();
 char cycles_init();
@@ -33,26 +54,5 @@ char cycles_start_timer();
 void cycles_step();
 void cycles_stop_timer();
 void cycles_term();
-
-typedef struct cycles_s
-{
-    /* am i init'ed? */
-    uint_fast32_t          inited;
-
-    /* ticks counter */
-    uint_fast32_t          cnt;
-
-    /* CPU clock */
-    uint_fast32_t          clock;
-
-    /* handy for .... pfff */
-    uint_fast32_t          mask;
-
-    uint_fast32_t          spare;
-    uint_fast32_t          spare2;
-
-} cycles_t;
-
-extern cycles_t cycles;
 
 #endif

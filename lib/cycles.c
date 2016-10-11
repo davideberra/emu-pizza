@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <semaphore.h>
 #include <signal.h>
+#include <string.h>
 #include <strings.h>
 #include <time.h>
 #include <sys/time.h>
@@ -107,22 +108,151 @@ void cycles_step()
     }
 
     /* update memory state (for DMA) */
-    mmu_step();
+
+    /* DMA */
+    if (mmu.dma_address != 0x0000)
+    {
+        mmu.dma_cycles -= 4;
+
+        /* enough cycles passed? */
+        if (mmu.dma_cycles == 0)
+        {
+            memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
+
+            /* reset address */
+            mmu.dma_address = 0x0000;
+        }
+    }
+
+    /* HDMA (only CGB) */
+    if (global_cgb && mmu.hdma_to_transfer)
+    {
+        /* hblank transfer */
+        if (mmu.hdma_transfer_mode)
+        {
+            /* transfer when line is changed and we're into HBLANK phase */
+            if (mmu.memory[0xFF44] < 143 &&
+                mmu.hdma_current_line != mmu.memory[0xFF44] &&
+               (mmu.memory[0xFF41] & 0x03) == 0x00)
+            {
+                /* update current line */
+                mmu.hdma_current_line = mmu.memory[0xFF44];
+
+                /* copy 0x10 bytes */
+                if (mmu.vram_idx)
+                    memcpy(mmu_addr_vram1() + mmu.hdma_dst_address - 0x8000,
+                           &mmu.memory[mmu.hdma_src_address], 0x10);
+                else
+                    memcpy(mmu_addr_vram0() + mmu.hdma_dst_address - 0x8000,
+                           &mmu.memory[mmu.hdma_src_address], 0x10);
+
+                /* decrease bytes to transfer */
+                mmu.hdma_to_transfer -= 0x10;
+
+                /* increase pointers */
+                mmu.hdma_dst_address += 0x10;
+                mmu.hdma_src_address += 0x10;
+            }
+        }
+    }
 
     /* update GPU state */
-    gpu_step();
 
-    /* and finally sound */
-    sound_step();
+    /* advance only in case of turned on display */
+    if ((*gpu.lcd_ctrl).display)
+        if (gpu.next == cycles.cnt)
+            gpu_step();
+
+    /* and proceed with sound step */
+    if (sound.channel_three.ram_access)
+        sound.channel_three.ram_access -= 4;
+        
+    /* fs clock */
+    if (sound.fs_cycles_next == cycles.cnt)
+        sound_step_fs();
+        
+    /* channel one */
+    if (sound.channel_one.active && 
+        sound.channel_one.duty_cycles_next == cycles.cnt)
+        sound_step_ch1();
+
+    /* channel two */
+    if (sound.channel_two.active && 
+        sound.channel_two.duty_cycles_next == cycles.cnt)
+        sound_step_ch2();
+        
+    /* channel three */
+    if (sound.channel_three.active && 
+        sound.channel_three.cycles_next <= cycles.cnt)
+        sound_step_ch3();        
+        
+    /* channel four */
+    if (sound.channel_four.active && 
+        sound.channel_four.cycles_next == cycles.cnt)
+        sound_step_ch4();
+        
+    /* time to generate a sample? */
+    if (sound.sample_cycles_next_rounded == cycles.cnt)
+        sound_step_sample();
 
     /* update timer state */
-    timer_step();
+    if (cycles.cnt == timer.next)
+    {
+        timer.next += 256;
+        timer.div++;
+    }
+
+    /* timer is on? */
+    if (timer.active)
+    {
+        /* add t to current sub */
+        timer.sub += 4;
+
+        /* threshold span overtaken? increment cnt value */
+        if (timer.sub == timer.threshold)
+        {
+            timer.sub -= timer.threshold;
+            timer.cnt++;
+            
+            /* cnt value > 255? trigger an interrupt */
+            if (timer.cnt > 255)
+            {
+                timer.cnt = timer.mod;
+
+                /* trigger timer interrupt */
+                cycles_if->timer = 1;
+            }            
+        }
+    }
 
     /* update serial state */
-    serial_step();
+    if (serial.clock && serial.transfer_start)
+    {
+        /* TODO - check SGB mode, it could run at different clock */
+        if (serial.next == cycles.cnt)
+        {
+            serial.next += 256;
 
-    /* and finally sound */
-    // sound_step();
+            /* one bit more was sent - update FF01  */
+            serial.data = (serial.data << 1) | 0x01;
+
+            /* increase bit sent */
+            serial.bits_sent++;
+
+            /* reached 8 bits? */
+            if (serial.bits_sent == 8)
+            {
+                /* reset counter */
+                serial.bits_sent = 0;
+
+                /* reset transfer_start flag to yell I'M DONE */
+                serial.transfer_start = 0;
+
+                /* and finally, trig the fucking interrupt */
+                cycles_if->serial_io = 1;
+            }
+        }
+    }    
 }
 
 char cycles_init()
@@ -188,16 +318,8 @@ void cycles_stop_timer()
 }
 
 /* callback for timer events (64 times per second) */
-//void cycles_timer_handler(int sig, siginfo_t *si, void *uc)
 void cycles_timer_handler(int sigval)
 {
-//    int sval;
-
-/*    sem_getvalue(&cycles_sem, &sval);
-
-    if (sval)
-        printf("SVAL: %d\n", sval); */
-
     sem_post(&cycles_sem);
 }
 

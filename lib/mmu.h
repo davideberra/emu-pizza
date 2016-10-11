@@ -48,4 +48,68 @@ void          mmu_restore_stat(FILE *fp);
 void          mmu_save_stat(FILE *fp);
 void          mmu_term();
 
+typedef struct mmu_s {
+
+    /* main 64K of memory */
+    uint8_t memory[65536];
+
+    /* vram in standby */
+    uint8_t vram0[0x2000];
+    uint8_t vram1[0x2000];
+
+    /* vram current idx */
+    uint8_t  vram_idx;
+    uint8_t  spare;
+    uint16_t spare2;
+
+    /* internal RAM */
+    uint8_t ram_internal[0x2000];
+    uint8_t ram_external_enabled;
+    uint8_t ram_current_bank;
+
+    /* cartridge type */
+    uint8_t carttype;
+
+    /* number of switchable roms */
+    uint8_t roms;
+
+    /* current ROM bank */
+    uint8_t rom_current_bank;
+
+    /* type of banking */
+    uint8_t banking;
+
+    /* working RAM (only CGB) */
+    uint8_t wram[0x8000];
+
+    /* current WRAM bank (only CGB) */
+    uint8_t  wram_current_bank;
+    uint8_t  spare3;
+    uint16_t spare4;
+
+    /* DMA transfer stuff */
+    uint_fast16_t dma_address;
+    uint_fast16_t dma_cycles;
+
+    /* HDMA transfer stuff */
+    uint16_t hdma_src_address;
+    uint16_t hdma_dst_address;
+    uint16_t hdma_to_transfer;
+    uint8_t  hdma_transfer_mode;
+    uint8_t  hdma_current_line;
+
+    /* RTC stuff */
+    uint8_t  rtc_mode;
+    uint8_t  spare5;
+    uint16_t spare6;
+    time_t  rtc_time;
+    time_t  rtc_latch_time;
+
+    uint_fast32_t          spare7;
+    uint_fast32_t          spare8;
+
+} mmu_t;
+
+extern mmu_t mmu;
+
 #endif

@@ -829,11 +829,11 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 void gpu_step()
 {
     /* advance only in case of turned on display */
-    if ((*gpu.lcd_ctrl).display == 0)
-        return;
+//    if ((*gpu.lcd_ctrl).display == 0)
+//        return;
 
-    if (gpu.next == cycles.cnt)
-    { 
+//    if (gpu.next == cycles.cnt)
+//    { 
         char ly_changed = 0;
         char mode_changed = 0;
 
@@ -993,7 +993,7 @@ void gpu_step()
                      (*gpu.lcd_status).ir_mode_10)
                 gpu_if->lcd_ctrl = 1;
         }
-    }
+//    }
 }
 
 uint8_t gpu_read_reg(uint16_t a)

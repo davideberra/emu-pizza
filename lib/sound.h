@@ -308,7 +308,8 @@ typedef struct sound_s
     uint_fast32_t          spare2;
 
 } sound_t;
-
+ 
+extern sound_t sound; 
 
 /* prototypes */
 void     sound_change_emulation_speed();
@@ -320,7 +321,12 @@ void     sound_restore_stat(FILE *fp);
 void     sound_save_stat(FILE *fp);
 void     sound_set_speed(char dbl);
 void     sound_set_output_rate(int freq);
-void     sound_step();
+void     sound_step_fs();
+void     sound_step_ch1();
+void     sound_step_ch2();
+void     sound_step_ch3();
+void     sound_step_ch4();
+void     sound_step_sample();
 void     sound_term();
 void     sound_write_reg(uint16_t a, uint8_t v);
 

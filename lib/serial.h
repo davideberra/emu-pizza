@@ -22,13 +22,6 @@
 
 #include <stdint.h>
 
-void serial_init();
-void serial_step();
-void serial_write_reg(uint16_t a, uint8_t v);
-uint8_t serial_read_reg(uint16_t a);
-void serial_save_stat(FILE *fp);
-void serial_restore_stat(FILE *fp);
-
 typedef struct serial_ctrl_s
 { 
     uint8_t clock;
@@ -64,5 +57,12 @@ typedef struct serial_s {
 } serial_t;
 
 extern serial_t serial;
+
+/* prototypes */
+void serial_init();
+void serial_write_reg(uint16_t a, uint8_t v);
+uint8_t serial_read_reg(uint16_t a);
+void serial_save_stat(FILE *fp);
+void serial_restore_stat(FILE *fp);
 
 #endif

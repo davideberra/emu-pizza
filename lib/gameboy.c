@@ -157,9 +157,6 @@ void gameboy_run()
 {
     uint8_t op;
 
-    /* init */
-    // gameboy_init();
-
     /* reset counter */
     cycles.cnt = 0;
 
@@ -174,17 +171,19 @@ void gameboy_run()
     /* start at normal speed */
     global_cpu_double_speed = 0;
 
+//    uint32_t cnt = 0;
+
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
     /* 1) execute instruction 2) update cycles counter 3) check interrupts */
     /* and repeat forever                                                  */
     while (!global_quit)
     {
-        if (global_slow_down)
+        /*if (global_slow_down)
         {
             usleep(100000);
             global_slow_down = 0;
-        }
+        }*/
 
         /* pause? */
         while (global_pause)
@@ -194,7 +193,7 @@ void gameboy_run()
         op   = mmu_read(state.pc);
 
         /* print out CPU state if enabled by debug flag */
-        if (global_debug)
+        /*if (global_debug)
         {
             printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ",
                                    op, *state.f & 0xd0, state.pc, 
@@ -206,7 +205,9 @@ void gameboy_run()
 
             printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc,
                                                           *state.de, *state.hl);
-        }
+        }*/
+
+        //cnt++;
 
         /* execute instruction by the GB Z80 version */
         z80_execute(op);
@@ -281,10 +282,6 @@ void gameboy_run()
         }
     }
 
-    /* when ended... save RAM */
-    
-    //mmu_save_ram(file_sav);
-
     /* terminate all the stuff */
     cartridge_term();
     sound_term();
@@ -337,6 +334,8 @@ char gameboy_restore_stat(int idx)
     state.bc = (uint16_t *) &state.c;
     state.de = (uint16_t *) &state.e;
     state.hl = (uint16_t *) &state.l;
+
+    printf("BC %p DE %p HL %p\n", state.bc, state.de, state.hl);
 
     /* dump every module */
     sound_restore_stat(fp);

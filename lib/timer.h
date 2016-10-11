@@ -22,27 +22,24 @@
 
 #include <stdint.h>
 
-/* prototypes */
-void    timer_init();
-void    timer_step();
-void    timer_write_reg(uint16_t a, uint8_t v);
-uint8_t timer_read_reg(uint16_t a);
-
-/* Gameboy Timer status */
+/* timer status */
 typedef struct timer_gb_s
 {
+    /* is it active? */
+    uint8_t active;
+
     /* divider - 0xFF04 */
     uint8_t div;
-
-    /* counter - 0xFF05 */
-    uint8_t cnt;
 
     /* modulo  - 0xFF06 */
     uint8_t mod;
 
     /* control - 0xFF07 */
     uint8_t ctrl;
-
+    
+    /* counter - 0xFF05 */
+    uint_fast32_t cnt;
+    
     /* threshold */
     uint32_t threshold;
 
@@ -50,9 +47,19 @@ typedef struct timer_gb_s
     uint_fast32_t sub;
     uint_fast32_t next;
 
+    /* spare */
+    uint_fast32_t spare;
+    uint_fast32_t spare2;
+    
 } timer_gb_t;
 
 /* global status of timer */
 timer_gb_t timer;
+
+/* prototypes */
+void    timer_init();
+void    timer_step();
+void    timer_write_reg(uint16_t a, uint8_t v);
+uint8_t timer_read_reg(uint16_t a);
 
 #endif

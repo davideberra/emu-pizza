@@ -28,70 +28,12 @@ interrupts_flags_t *timer_if;
 
 void timer_init()
 {
-    /* assign timer values to them memory addresses */
-/*    timer.div  = mmu_addr(0xFF04); 
-    timer.cnt  = mmu_addr(0xFF05); 
-    timer.mod  = mmu_addr(0xFF06); 
-    timer.ctrl = mmu_addr(0xFF07); */
-
+    /* reset values */
     timer.next = 256;
     timer.sub = 0;
 	
     /* pointer to interrupt flags */
     timer_if   = mmu_addr(0xFF0F);
-}
-
-/* update timer internal state given CPU T-states */
-void timer_step()
-{
-    /* div_sub always run */
-//    timer.div_sub += 4;
-//    if ((timer.div_sub & 0x000000FF) == 0x00)
-
-    if (cycles.cnt == timer.next)
-    {
-        timer.next += 256;
-        timer.div++;
-    }
-
-    /* timer is on? */
-    if ((timer.ctrl & 0x04) == 0)
-        return;
-
-    /* add t to current sub */
-    timer.sub += 4;
-
-    /* save value */
-    uint16_t cnt = timer.cnt;
-
-    /* calc threshold */
-/*    uint16_t threshold;
-
-    switch (timer.ctrl & 0x03)
-    {
-        case 0x00: threshold = 1024; break;
-        case 0x01: threshold = 16; break; 
-        case 0x02: threshold = 64; break; 
-        case 0x03: threshold = 256; break; 
-    } */
-
-    /* threshold span overtaken? increment cnt value */
-    if (timer.sub >= timer.threshold)
-    {
-        timer.sub -= timer.threshold;
-        cnt++;
-    }
-
-    /* cnt value > 255? trigger an interrupt */
-    if (cnt > 255)
-    {
-        cnt = timer.mod;
-
-        /* trigger timer interrupt */
-        timer_if->timer = 1;
-    }
-
-    timer.cnt = cnt;
 }
 
 void timer_write_reg(uint16_t a, uint8_t v)
@@ -102,8 +44,13 @@ void timer_write_reg(uint16_t a, uint8_t v)
         case 0xFF05: timer.cnt = v; return;
         case 0xFF06: timer.mod = v; return;
         case 0xFF07: timer.ctrl = v; 
-   }
+    }
 
+    if (timer.ctrl & 0x04)
+        timer.active = 1;
+    else
+        timer.active = 0;
+        
     switch (timer.ctrl & 0x03)
     {
         case 0x00: timer.threshold = 1024; break;

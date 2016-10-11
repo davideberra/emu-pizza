@@ -66,6 +66,15 @@ typedef struct gpu_lcd_status_s
     uint8_t spare:1;
 } gpu_lcd_status_t;
 
+/* RGB color */
+typedef struct rgb_s
+{
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint8_t a;
+} rgb_t;
+
 /* Gameboy GPU status */
 typedef struct gpu_s 
 {
@@ -127,6 +136,9 @@ typedef struct gpu_s
 
     uint_fast32_t spare4;
     uint_fast32_t spare5;
+
 } gpu_t;
+
+extern gpu_t gpu;
 
 #endif

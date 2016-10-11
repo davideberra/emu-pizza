@@ -22,85 +22,18 @@
 #include "serial.h"
 #include "cycles.h"
 
-/* pointer to interrupt flags (handy) */
-// interrupts_flags_t *serial_if;
-
-/* pointer to serial controller register */
-// serial_ctrl_t *serial_ctrl;
-
-/* pointer to FF01 data */
-// uint8_t *serial_data;
-
+/* main variable */
 serial_t serial;
 
 interrupts_flags_t *serial_if;
 
-/* sent bits */
-// uint8_t serial_bits_sent = 0;
-
-// int serial_cnt = 0;
-
-void serial_init_pointers()
-{
-    /* pointer to data to send/received */
-//    serial.data = mmu_addr(0xFF01);
-
-    /* assign timer values to them memory addresses */
-//    serial.ctrl = mmu_addr(0xFF02);
-
-    /* pointer to interrupt flags */
-    // serial.ifp   = mmu_addr(0xFF0F);
-}
-
 void serial_init()
 {
     /* pointer to interrupt flags */
-    //serial_init_pointers();    
-
     serial_if = mmu_addr(0xFF0F);
 
     /* init counters */
-    //serial.cnt = 0;
     serial.bits_sent = 0;
-}
-
-void serial_step()
-{
-    if (serial.clock && serial.transfer_start)
-    {
-//        serial.cnt += 4;
-
-        /* TODO - check SGB mode, it could run at different clock */
-        if (serial.next == cycles.cnt)
-        {
-	    serial.next += 256;
-
-            /* reset counter */
-//            serial.cnt = 0;
-
-            /* if (serial.bits_sent == 0)
-                printf("VOGLIO SPEDIRE %02x\n", *(serial.data)); */
-
-            /* one bit more was sent - update FF01  */
-            serial.data = (serial.data << 1) | 0x01;
-
-            /* increase bit sent */
-            serial.bits_sent++;
-
-            /* reached 8 bits? */
-            if (serial.bits_sent == 8)
-            {
-                /* reset counter */
-                serial.bits_sent = 0;
-
-                /* reset transfer_start flag to yell I'M DONE */
-                serial.transfer_start = 0;
-
-                /* and finally, trig the fucking interrupt */
-                serial_if->serial_io = 1;
-            }
-        }
-    }
 }
 
 void serial_save_stat(FILE *fp)
@@ -111,8 +44,6 @@ void serial_save_stat(FILE *fp)
 void serial_restore_stat(FILE *fp)
 {
     fread(&serial, 1, sizeof(serial_t), fp);
-
-    serial_init_pointers();
 }
 
 void serial_write_reg(uint16_t a, uint8_t v)
