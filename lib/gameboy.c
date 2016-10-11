@@ -140,6 +140,9 @@ void gameboy_set_pause(char pause)
 
     if (pause)
     {
+        /* wait a bit - i need the main cycle fall into global_pause check */
+        usleep(100000);
+
         /* stop timer */
         cycles_stop_timer();
     }
@@ -171,8 +174,6 @@ void gameboy_run()
     /* start at normal speed */
     global_cpu_double_speed = 0;
 
-//    uint32_t cnt = 0;
-
     /* run stuff!                                                          */
     /* mechanism is simple.                                                */
     /* 1) execute instruction 2) update cycles counter 3) check interrupts */
@@ -193,7 +194,7 @@ void gameboy_run()
         op   = mmu_read(state.pc);
 
         /* print out CPU state if enabled by debug flag */
-        /*if (global_debug)
+/*        if (global_debug)
         {
             printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ",
                                    op, *state.f & 0xd0, state.pc, 
@@ -206,8 +207,6 @@ void gameboy_run()
             printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc,
                                                           *state.de, *state.hl);
         }*/
-
-        //cnt++;
 
         /* execute instruction by the GB Z80 version */
         z80_execute(op);
@@ -315,9 +314,6 @@ char gameboy_restore_stat(int idx)
     /* ensure i'm in pause */
     gameboy_set_pause(1);
 
-    /* wait a little, just to ensure main loop enter in pause state */
-    usleep(100000);
-
     /* build output file name */
     snprintf(path, sizeof(path), "%s/%s.%d.stat", global_save_folder,
                                                   global_rom_name, idx);
@@ -335,14 +331,12 @@ char gameboy_restore_stat(int idx)
     state.de = (uint16_t *) &state.e;
     state.hl = (uint16_t *) &state.l;
 
-    printf("BC %p DE %p HL %p\n", state.bc, state.de, state.hl);
-
     /* dump every module */
+    cycles_restore_stat(fp);
     sound_restore_stat(fp);
     gpu_restore_stat(fp);
     serial_restore_stat(fp);
     mmu_restore_stat(fp);
-    cycles_restore_stat(fp);
 
     fclose(fp);
 
@@ -355,9 +349,6 @@ char gameboy_save_stat(int idx)
 
     /* ensure i'm in pause */
     gameboy_set_pause(1);
-
-    /* wait a little, just to ensure main loop enter in pause state */
-    usleep(100000);
 
     /* build output file name */
     snprintf(path, sizeof(path), "%s/%s.%d.stat", global_save_folder, 
@@ -372,11 +363,11 @@ char gameboy_save_stat(int idx)
     fwrite(&state, 1, sizeof(z80_state_t), fp);
 
     /* dump every module */
+    cycles_save_stat(fp);
     sound_save_stat(fp);
     gpu_save_stat(fp);
     serial_save_stat(fp);
     mmu_save_stat(fp);
-    cycles_save_stat(fp);
 
     fclose(fp);
 
