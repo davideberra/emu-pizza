@@ -20,8 +20,8 @@
 #ifndef __SOUND_HDR__
 #define __SOUND_HDR__
 
-#define SOUND_FREQ_MAX    48000
-#define SOUND_SAMPLES SOUND_FREQ_MAX / 10
+#define SOUND_FREQ_MAX 48000
+#define SOUND_SAMPLES 4096
 #define SOUND_BUF_SZ (SOUND_SAMPLES * 3)
 #define SOUND_BUF_TMP_SZ (SOUND_SAMPLES / 2)
 
@@ -196,7 +196,7 @@ typedef struct channel_square_s
     uint8_t       envelope_cnt;
     uint_fast16_t duty_cycles;
     uint_fast16_t duty_cycles_next;
-    uint32_t      length;
+    uint_fast32_t length;
     uint_fast32_t frequency;
     int16_t       sample;
     int16_t       spare;
@@ -284,6 +284,7 @@ typedef struct sound_s
     uint_fast16_t     buf_wr;
     uint_fast16_t     buf_available;
     uint_fast16_t     buf_empty; 
+    uint_fast16_t     buf_full; 
     int16_t           buf[SOUND_BUF_SZ];
     int16_t           buf_tmp[SOUND_BUF_TMP_SZ];
     uint_fast16_t     buf_tmp_wr;

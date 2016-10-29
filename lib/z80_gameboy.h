@@ -53,8 +53,8 @@ typedef struct z80_state_s
     uint8_t        l;
 #endif
 
-    uint_fast16_t       sp;
-    uint_fast16_t       pc;
+    uint16_t       sp;
+    uint16_t       pc;
 
     /* shortcuts */
     uint16_t       *bc;

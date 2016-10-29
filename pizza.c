@@ -22,23 +22,29 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include "cartridge.h"
+#include "cycles.h"
 #include "gameboy.h"
 #include "global.h"
 #include "gpu.h"
 #include "input.h"
+#include "network.h"
 #include "sound.h"
+#include "serial.h"
 
 /* proto */
 void cb();
+void network_send_data(uint8_t v);
 void *start_thread(void *args);
+void *start_thread_network(void *args);
 
 /* frame buffer pointer */
 uint16_t *fb;
 
 /* magnify rate */
-float magnify_rate = 3.f;
+float magnify_rate = 1.f;
 
 /* emulator thread */
 pthread_t thread;
@@ -47,6 +53,9 @@ pthread_t thread;
 SDL_Window *window;
 SDL_Surface *screenSurface;
 SDL_Surface *windowSurface;
+
+/* cartridge name */
+char cart_name[64];
 
 
 int main(int argc, char **argv)
@@ -93,7 +102,7 @@ int main(int argc, char **argv)
     /* initialize SDL audio */
     SDL_Init(SDL_INIT_AUDIO);
     desired.freq = 44100;
-    desired.samples = SOUND_SAMPLES;
+    desired.samples = SOUND_SAMPLES / 2;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
     desired.callback = sound_read_buffer;
@@ -119,6 +128,9 @@ int main(int argc, char **argv)
 
     /* start thread! */
     pthread_create(&thread, NULL, start_thread, NULL);
+
+    /* start network thread! */
+    network_start();
 
     /* loop forever */
     while (!global_quit)
@@ -150,10 +162,14 @@ int main(int argc, char **argv)
                                    gameboy_restore_stat(0); 
                                    gameboy_set_pause(0);
                                    break;
+                    case (SDLK_9): network_start(); break;
+                    case (SDLK_0): network_stop(); break;
                     case (SDLK_q): global_quit = 1; break;
                     case (SDLK_d): global_debug ^= 0x01; break;
                     case (SDLK_s): global_slow_down = 1; break;
                     case (SDLK_w): global_window ^= 0x01; break;
+                    case (SDLK_n): gameboy_set_pause(0); 
+                                   global_next_frame = 1; break;
                     case (SDLK_PLUS): 
                         if (global_emulation_speed != 
                             GLOBAL_EMULATION_SPEED_DOUBLE) 
@@ -166,7 +182,7 @@ int main(int argc, char **argv)
                         break;
                     case (SDLK_MINUS):
                         if (global_emulation_speed !=
-                            GLOBAL_EMULATION_SPEED_HALF)
+                            GLOBAL_EMULATION_SPEED_QUARTER)
                         {
                             global_emulation_speed--;
                             cycles_change_emulation_speed();
@@ -207,16 +223,16 @@ int main(int argc, char **argv)
     /* join emulation thread */   
     pthread_join(thread, NULL);
 
-    cycles_term();
+    /* stop network thread! */
+    network_stop();
+
+    utils_log("Total cycles %d\n", cycles.cnt);
 
     return 0;
 }
 
 void *start_thread(void *args)
 {
-    /* init all the stuff */
-    // gameboy_init();
-
     /* run until break or global_quit is set */
     gameboy_run();
 

@@ -35,9 +35,11 @@ typedef struct cycles_s
     uint_fast32_t          clock;
 
     /* handy for calculation */
-    uint_fast32_t          mask;
+    uint_fast32_t          next;
 
-    uint_fast32_t          spare;
+    /* step varying on cpu and emulation speed */
+    uint_fast32_t          step;
+
     uint_fast32_t          spare2;
 
 } cycles_t;

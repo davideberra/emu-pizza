@@ -22,6 +22,7 @@
 #include "gpu.h"
 #include "mmu.h"
 #include "sound.h"
+#include "utils.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -39,7 +40,7 @@ sound_t sound;
 
 /* global for output frequency */
 int sound_output_rate = 48000;
-int sound_output_rate_fifth = 48000 / 5;
+int sound_output_rate_fifth = 48; // 48000 / 5;
 
 /* internal prototypes */
 size_t sound_available_samples();
@@ -52,11 +53,10 @@ void   sound_rebuild_wave();
 void   sound_sweep_step();
 void   sound_term();
 void   sound_write_wave(uint16_t a, uint8_t v);
-// void static inline sound_push_sample(int16_t s);
 
 int sound_get_samples()
 {
-    return sound_output_rate / 10;
+    return SOUND_SAMPLES; // sound_output_rate / 10;
 }
 
 void sound_init_pointers()
@@ -135,7 +135,6 @@ void sound_init()
 
 void sound_set_speed(char dbl)
 {
-
 	return;
 
     if (dbl)
@@ -383,7 +382,7 @@ void sound_step_sample()
 
 /* update length of channel1 */
 void static inline sound_length_ctrl_step_ch(char length_enable, 
-                                             uint32_t *length,
+                                             uint_fast32_t *length,
                                              uint8_t *active)
 {
     if (length_enable && *length != 0)
@@ -447,23 +446,11 @@ void sound_push_samples(int16_t l, int16_t r)
         /* set it free */	
         pthread_mutex_unlock(&sound_mutex);
     }	    
-
-    /* lock the buffer */
-    // pthread_mutex_lock(&sound_mutex);
- 
-//    sound_push_sample(l);
-//    sound_push_sample(r);
-
-    /* unlock it */
-    // pthread_mutex_unlock(&sound_mutex);
 }
 
 /* push a single sample data into circular buffer */
 void sound_push_sample(int16_t s)
 {
-    /* lock the buffer */
-//    pthread_mutex_lock(&sound_mutex);
-  
     /* assign sample value */ 
     sound.buf[sound.buf_wr] = s;
 
@@ -477,7 +464,7 @@ void sound_push_sample(int16_t s)
     sound.buf_available++;
 
     /* if it's locked and we got enough samples, unlock */
-    if (sound.buf_empty && sound.buf_available == sound_output_rate_fifth)
+    if (sound.buf_empty && sound.buf_available == (SOUND_SAMPLES * 2))
     {
         sound.buf_empty = 0;
 
@@ -494,11 +481,8 @@ void sound_push_sample(int16_t s)
         sound.buf_rd++;
 
         if (sound.buf_rd == SOUND_BUF_SZ)
-            sound.buf_rd = 0;
+           sound.buf_rd = 0;
     }
-
-    /* unlock it */
-//    pthread_mutex_unlock(&sound_mutex);
 }
 
 /* calculate the available samples in circula buffer */
@@ -511,7 +495,7 @@ size_t sound_available_samples()
 }
 
 /* read a block of data from circular buffer */
-void sound_read_samples(int len, int16_t *buf)
+void sound_read_samples(int to_read, int16_t *buf)
 {
     /* lock the buffer */
     pthread_mutex_lock(&sound_mutex);
@@ -523,15 +507,13 @@ void sound_read_samples(int len, int16_t *buf)
         return;
     }
 
-    int to_read = len;
-
     /* not enough samples? read what we got */
     if (sound.buf_available < to_read)
     {
         /* stop until we got enough samples */
         sound.buf_empty = 1;
 
-        while (sound.buf_empty == 1)
+        while (sound.buf_empty && !global_quit)
             pthread_cond_wait(&sound_cond, &sound_mutex);
     }
 
@@ -558,15 +540,6 @@ void sound_read_samples(int len, int16_t *buf)
 
     /* update avaiable samples */
     sound.buf_available -= to_read;
-
-//    if (sound.buffer_full)
-//    {
-        /* unlock write thread */
-//        sound.buffer_full = 0;
-
-        /* send a signal */
-//        pthread_cond_signal(&sound_cond);
-//    }
 
     /* unlock the buffer */
     pthread_mutex_unlock(&sound_mutex);
@@ -813,7 +786,7 @@ uint8_t sound_read_reg(uint16_t a, uint8_t v)
         case 0xFF3F: 
             if (sound.channel_three.active)
             {
-                if (sound.channel_three.ram_access != 0)
+                if (!global_cgb && sound.channel_three.ram_access != 0)
                     return 0xFF;
 
                 return sound.wave_table[sound.channel_three.index >> 1];
@@ -843,6 +816,10 @@ void sound_write_reg(uint16_t a, uint8_t v)
     /* when turned off, only write to NR52 (0xFF26) is legit */
     if (!sound.nr52->power && a != 0xFF26)
     {
+        /* CGB mode doesnt allow any write on register during power off */
+        if (global_cgb)
+            return;
+
         /* in DMG mode, update length is legit while no power */ 
         switch (a)
         {
@@ -870,13 +847,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
             if (!sound.nr10->negate && sound.channel_one.sweep_neg)
                 sound.channel_one.active = 0; 
-
-            /* set sweep as active if period != 0 or shift != 0 */
-            /*if (sound.nr10->sweep_period != 0 ||
-                sound.nr10->shift != 0)
-                sound.channel_one.sweep_active = 1;
-            else
-                sound.channel_one.sweep_active = 0;*/
 
             break;
 
@@ -955,13 +925,11 @@ void sound_write_reg(uint16_t a, uint8_t v)
             /* qty of cpu ticks needed for a duty change */
             /* (1/8 of wave cycle) */
             sound.channel_one.duty_cycles = 
-                ((2048 - sound.channel_one.frequency) * 4) << global_cpu_double_speed;
+                ((2048 - sound.channel_one.frequency) * 4) 
+                << global_cpu_double_speed;
 
             if (v & 0x80) 
             {
-//                uint16_t freq = sound.nr13->frequency_lsb |
-//                                (sound.nr14->frequency_msb << 8);
-
                 /* if we switch from OFF to ON, reset duty idx */
                 if (sound.channel_two.active == 0)
                     sound.channel_two.duty_idx = 0;
@@ -970,13 +938,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_one.active = 1;
                 sound.channel_one.duty_cycles_next = 
          	    cycles.cnt + sound.channel_one.duty_cycles;
-
-// PDIO                sound.channel_one.active = 1;
-//                sound.channel_one.frequency = freq;
-
-                /* qty of cpu ticks needed for a duty change */
-                /* (1/8 of wave cycle) */
-//                sound.channel_one.duty_cycles = (2048 - freq) * 4;    
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
                 switch (sound.nr11->duty)
@@ -997,9 +958,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
                     case 0x03: sound.channel_one.duty = 0x7E;
                                break;
                 }
-
-                /* start duty from the 1st bit */
-//                sound.channel_one.duty_idx = 0;
 
                 /* calc length */
                 if (sound.channel_one.length == 0)
@@ -1047,7 +1005,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
                     sound.nr12->volume == 0)
                     sound.channel_one.active = 0;
 
-                /* extra length clock if length == 64 and FS is in the fist half */
+                /* extra length clock if length == 64 */
+                /* and FS is in the fist half         */
                 if ((sound.fs_cycles_idx & 0x01) == 0x00 &&
                      sound.channel_one.length == 64)
                     sound_length_ctrl_step_ch(sound.nr14->length_enable,
@@ -1101,7 +1060,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
             /* update duty cycles */
             sound.channel_two.duty_cycles =
-                ((2048 - sound.channel_two.frequency) * 4) << global_cpu_double_speed;
+                ((2048 - sound.channel_two.frequency) * 4) 
+                << global_cpu_double_speed;
 
             break;
 
@@ -1131,13 +1091,11 @@ void sound_write_reg(uint16_t a, uint8_t v)
             /* qty of cpu ticks needed for a duty change */ 
             /* (1/8 of wave cycle) */
             sound.channel_two.duty_cycles = 
-                ((2048 - sound.channel_two.frequency) * 4) << global_cpu_double_speed;
+                ((2048 - sound.channel_two.frequency) * 4) 
+                << global_cpu_double_speed;
 
             if (v & 0x80) 
             {
-//                uint16_t freq = sound.nr23->frequency_lsb |
-//                                (sound.nr24->frequency_msb << 8);
-
                 /* if we switch from OFF to ON, reset duty idx */
                 if (sound.channel_two.active == 0)
                     sound.channel_two.duty_idx = 0;
@@ -1146,11 +1104,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_two.active = 1;
                 sound.channel_two.duty_cycles_next = 
          	    cycles.cnt + sound.channel_two.duty_cycles;
-//                sound.channel_two.frequency = freq;
-
-                /* qty of cpu ticks needed for a duty change */ 
-                /* (1/8 of wave cycle) */
-//                sound.channel_two.duty_cycles = (2048 - freq) * 2;
 
                 /* set the 8 phase of a duty cycle by setting 8 bits */
                 switch (sound.nr21->duty)
@@ -1172,9 +1125,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
                                break;
                 }
 
-                /* start duty from the 8th bit */
-//                sound.channel_two.duty_idx = 0;
- 
                 /* calc length */
                 if (sound.channel_two.length == 0)
                     sound.channel_two.length = 64;
@@ -1219,9 +1169,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
         case 0xFF1C:
 
-            /* volume changed -> rebuild wave */
-            // sound_rebuild_wave();
-
             break;
 
         case 0xFF1E:
@@ -1252,18 +1199,18 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 sound.channel_three.active = 1;
                 sound.channel_three.frequency = freq;
 
-		uint_fast32_t old_cycles = sound.channel_three.cycles;
+                uint_fast32_t old_cycles = sound.channel_three.cycles;
 
                 /* qty of cpu ticks needed for a wave sample change */
                 sound.channel_three.cycles = 
-			(((2048 - freq) * 2) + 6) << global_cpu_double_speed; 
+                    (((2048 - freq) * 2) + 6) << global_cpu_double_speed; 
 
 
                 /* treat obscure behaviours.... */
-                if (cycles.cnt + 8 == 
-				sound.channel_three.cycles_next + 
-				sound.channel_three.cycles - 
-				old_cycles)
+                if (!global_cgb && 
+                    cycles.cnt + 8 == sound.channel_three.cycles_next + 
+                                      sound.channel_three.cycles - 
+                                      old_cycles)
                 {
                     uint8_t next = 
                         ((sound.channel_three.index + 1) & 0x1F) >> 1;
@@ -1277,8 +1224,8 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* init wave table index */
                 sound.channel_three.index = 0;
-		sound.channel_three.cycles_next = 
-			cycles.cnt + sound.channel_three.cycles;
+                sound.channel_three.cycles_next = 
+                    cycles.cnt + sound.channel_three.cycles;
 
                 /* calc length */
                 if (sound.channel_three.length == 0)
@@ -1362,7 +1309,7 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 /* calc LFSR period */
                 sound.channel_four.period_lfsr = divisor << sound.nr43->shift;
                 sound.channel_four.cycles_next = 
-			cycles.cnt + sound.channel_four.period_lfsr;
+                    cycles.cnt + sound.channel_four.period_lfsr;
 
                 /* init reg to all bits to 1 */
                 sound.channel_four.reg = 0x7FFF;
@@ -1384,18 +1331,13 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 if ((sound.fs_cycles_idx & 0x01) == 0x00 &&
                      sound.channel_four.length == 64)
                     sound_length_ctrl_step_ch(sound.nr44->length_enable,
-                               &sound.channel_four.length,
-                               &sound.channel_four.active);
+                                              &sound.channel_four.length,
+                                              &sound.channel_four.active);
             }
 
             break;
 
-/*        case 0xFF24:
-            break; */
-
         case 0xFF26:
-
-            // return;
 
             if (v & 0x80)
             {
@@ -1419,6 +1361,12 @@ void sound_write_reg(uint16_t a, uint8_t v)
                 /* clear all the sound memory */
                 bzero(mmu_addr(0xFF10), 22);
 
+                if (global_cgb)
+                {
+                    sound.nr41->length_load = 0;
+                    sound.channel_four.length = 0;
+                }
+
                 /* turn off every channeru */
                 sound.channel_one.active = 0;
                 sound.channel_two.active = 0;
@@ -1433,7 +1381,7 @@ void sound_write_wave(uint16_t a, uint8_t v)
 {
     if (sound.channel_three.active)
     {
-        if (sound.channel_three.ram_access != 0)
+        if (!global_cgb && sound.channel_three.ram_access != 0)
             return;
 
         sound.wave_table[sound.channel_three.index >> 1] = v;

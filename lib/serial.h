@@ -21,6 +21,7 @@
 #define __SERIAL_HDR__
 
 #include <stdint.h>
+#include <stdio.h>
 
 typedef struct serial_ctrl_s
 { 
@@ -45,24 +46,44 @@ typedef struct serial_s {
 
     /* sent bits */
     uint8_t  bits_sent;
-    uint8_t  spare2;
-    uint8_t  spare3;
+
+    /* data to send */
+    uint8_t  data_to_send;
+
+    /* peer clock */
+    uint8_t  data_to_recv;
 
     /* counter */
     uint_fast32_t next;
 
-    uint_fast32_t          spare4;
+    /* peer connected? */
+    uint8_t  peer_connected:1;
+    uint8_t  data_sent:1;
+    uint8_t  data_recv:1;
+    uint8_t  data_recv_clock:1;
+    uint8_t  spare10:4;
+
+    uint8_t  spare2;
+    uint8_t  spare3;
+    uint8_t  spare4;
+
     uint_fast32_t          spare5;
 
 } serial_t;
 
 extern serial_t serial;
 
+/* callback when receive something on serial */
+typedef void (*serial_data_send_cb_t) (uint8_t v, uint8_t clock);
+
 /* prototypes */
-void serial_init();
-void serial_write_reg(uint16_t a, uint8_t v);
+void    serial_init();
+void    serial_write_reg(uint16_t a, uint8_t v);
 uint8_t serial_read_reg(uint16_t a);
-void serial_save_stat(FILE *fp);
-void serial_restore_stat(FILE *fp);
+void    serial_recv_byte(uint8_t v, uint8_t clock);
+void    serial_save_stat(FILE *fp);
+void    serial_send_byte(uint8_t v, uint8_t clock);
+void    serial_set_send_cb(serial_data_send_cb_t cb);
+void    serial_restore_stat(FILE *fp);
 
 #endif

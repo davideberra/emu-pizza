@@ -17,18 +17,20 @@
 
 */
 
-#include "cycles.h"
-#include "global.h"
-#include "interrupt.h"
-#include "mmu.h"
-#include "gpu.h"
-
 #include <errno.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+
+#include "cycles.h"
+#include "gameboy.h"
+#include "global.h"
+#include "gpu.h"
+#include "interrupt.h"
+#include "mmu.h"
+#include "utils.h"
 
 /* Gameboy OAM 4 bytes data */
 typedef struct gpu_oam_s
@@ -160,13 +162,13 @@ void gpu_toggle(uint8_t state)
         /* LCD turned on */
         gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
         *gpu.ly  = 0;
-        (*gpu.lcd_status).mode = 0x00;
+        (*gpu.lcd_status).mode = 0x01;
         (*gpu.lcd_status).ly_coincidence = 0x00;
     }
     else
     {
         /* LCD turned off - reset stuff */
-        gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
+        gpu.next = cycles.cnt - 1; //  + (80 << global_cpu_double_speed);
         *gpu.ly = 0;
         (*gpu.lcd_status).mode = 0x00;
     }
@@ -231,6 +233,12 @@ void gpu_draw_frame()
     /* reset priority matrix */
     bzero(gpu.priority, 160 * 144);
     bzero(gpu.palette_idx, 160 * 144);
+
+    if (global_next_frame)
+    {
+        global_next_frame = 0;
+        gameboy_set_pause(1);
+    }
 
     return;
 }
@@ -856,8 +864,8 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x01;
 
                         /* mode one lasts 456 cycles */
-                        gpu.next = 
-			    cycles.cnt + (456 << global_cpu_double_speed);
+                        gpu.next = cycles.cnt + 
+                                   (456 << global_cpu_double_speed);
 
                         /* DRAW! TODO */
                         /* CHECK INTERRUPTS! TODO */
@@ -877,8 +885,8 @@ void gpu_step()
                         (*gpu.lcd_status).mode = 0x02;
 
                         /* mode 2 needs 80 cycles */
-                        gpu.next = 
-			    cycles.cnt + (80 << global_cpu_double_speed);
+                        gpu.next = cycles.cnt + 
+                                   (80 << global_cpu_double_speed);
                     }
 
                     /* notify mode has changed */

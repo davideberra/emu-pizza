@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 /* functions prototypes */
 void         *mmu_addr(uint16_t a);

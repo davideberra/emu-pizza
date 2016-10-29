@@ -26,6 +26,7 @@
 
 #include "global.h"
 #include "mmu.h"
+#include "utils.h"
 
 /* buffer big enough to contain the largest possible ROM */
 uint8_t rom[2 << 24];
@@ -44,9 +45,10 @@ int __mkdirp (char *path, mode_t omode);
 /* 1: Can't open/read file */
 /* 2: Unknown cartridge    */
 
-char cartridge_load(char *file_gb) {
+char cartridge_load(char *file_gb) 
+{
     FILE *fp;
-    int i;
+    int i,z = 0;
 
     /* open ROM file */
     if ((fp = fopen(file_gb, "r")) == NULL) 
@@ -63,70 +65,72 @@ char cartridge_load(char *file_gb) {
     fclose(fp);
  
     /* gameboy color? */
-    if (rom[0x143] == 0xC0)
+    if (rom[0x143] == 0xC0 || rom[0x143] == 0x80)
     {
-        printf("Gameboy Color cartridge\n");
+        utils_log("Gameboy Color cartridge\n");
         global_cgb = 1;
     }
     else
     {
-        printf("Gameboy Classic cartridge\n");
+        utils_log("Gameboy Classic cartridge\n");
         global_cgb = 0;
     }
 
     /* get cartridge infos */
     uint8_t mbc = rom[0x147];
 
-    printf("Cartridge code: %02x\n", mbc);
+    utils_log("Cartridge code: %02x\n", mbc);
 
     switch (mbc)
     {
-        case 0x00: printf("ROM ONLY\n"); break;
-        case 0x01: printf("MBC1\n"); break;
-        case 0x02: printf("MBC1 + RAM\n"); break;
-        case 0x03: printf("MBC1 + RAM + BATTERY\n"); break;
-        case 0x05: printf("MBC2\n"); break;
-        case 0x06: mmu_init_ram(512); printf("MBC2 + BATTERY\n"); break;
-        case 0x10: printf("MBC3 + TIMER + RAM + BATTERY\n"); break;
-        case 0x11: printf("MBC3\n"); break;
-        case 0x12: printf("MBC3 + RAM\n"); break;
-        case 0x13: printf("MBC3 + RAM + BATTERY\n"); break;
-        case 0x19: printf("MBC5\n"); break;
-        case 0x1A: printf("MBC5 + RAM\n"); break;
-        case 0x1B: printf("MBC5 + RAM + BATTERY\n"); break;
-        case 0x1C: printf("MBC5 + RUMBLE\n"); break;
-        case 0x1D: printf("MBC5 + RUMBLE + RAM\n"); break;
-        case 0x1E: printf("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
+        case 0x00: utils_log("ROM ONLY\n"); break;
+        case 0x01: utils_log("MBC1\n"); break;
+        case 0x02: utils_log("MBC1 + RAM\n"); break;
+        case 0x03: utils_log("MBC1 + RAM + BATTERY\n"); break;
+        case 0x05: utils_log("MBC2\n"); break;
+        case 0x06: mmu_init_ram(512); utils_log("MBC2 + BATTERY\n"); break;
+        case 0x10: utils_log("MBC3 + TIMER + RAM + BATTERY\n"); break;
+        case 0x11: utils_log("MBC3\n"); break;
+        case 0x12: utils_log("MBC3 + RAM\n"); break;
+        case 0x13: utils_log("MBC3 + RAM + BATTERY\n"); break;
+        case 0x19: utils_log("MBC5\n"); break;
+        case 0x1A: utils_log("MBC5 + RAM\n"); break;
+        case 0x1B: utils_log("MBC5 + RAM + BATTERY\n"); break;
+        case 0x1C: utils_log("MBC5 + RUMBLE\n"); break;
+        case 0x1D: utils_log("MBC5 + RUMBLE + RAM\n"); break;
+        case 0x1E: utils_log("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
 
-        default: printf("Unknown cartridge type: %02x\n", mbc);
+        default: utils_log("Unknown cartridge type: %02x\n", mbc);
                  return 2;
     }
 
     /* title */
     for (i=0x134; i<0x143; i++)
         if (rom[i] > 0x40 && rom[i] < 0x5B)
-            printf("%c", rom[i]);
+            global_cart_name[z++] = rom[i];
 
-    printf("\n");
+    global_cart_name[z] = '\0';
+
+    utils_log("%s\n", global_cart_name);
 
     /* get ROM banks */
     uint8_t byte = rom[0x148];
 
-    printf("ROM: ");
+    utils_log("ROM: ");
 
     switch (byte)
     {
-        case 0x00: printf("0 banks\n"); break;
-        case 0x01: printf("4 banks\n"); break;
-        case 0x02: printf("8 banks\n"); break;
-        case 0x03: printf("16 banks\n"); break;
-        case 0x04: printf("32 banks\n"); break;
-        case 0x05: printf("64 banks\n"); break;
-        case 0x06: printf("128 banks\n"); break;
-        case 0x07: printf("256 banks\n"); break;
-        case 0x52: printf("72 banks\n"); break;
-        case 0x53: printf("80 banks\n"); break;
-        case 0x54: printf("96 banks\n"); break;
+        case 0x00: utils_log("0 banks\n"); break;
+        case 0x01: utils_log("4 banks\n"); break;
+        case 0x02: utils_log("8 banks\n"); break;
+        case 0x03: utils_log("16 banks\n"); break;
+        case 0x04: utils_log("32 banks\n"); break;
+        case 0x05: utils_log("64 banks\n"); break;
+        case 0x06: utils_log("128 banks\n"); break;
+        case 0x07: utils_log("256 banks\n"); break;
+        case 0x52: utils_log("72 banks\n"); break;
+        case 0x53: utils_log("80 banks\n"); break;
+        case 0x54: utils_log("96 banks\n"); break;
     }
 
     /* init MMU */
@@ -135,28 +139,28 @@ char cartridge_load(char *file_gb) {
     /* get RAM banks */
     byte = rom[0x149];
 
-    printf("RAM: ");
+    utils_log("RAM: ");
 
     switch (byte)
     {
-        case 0x00: printf("NO RAM\n"); break;
-        case 0x01: mmu_init_ram(1 << 11); printf("2 kB\n"); break;
+        case 0x00: utils_log("NO RAM\n"); break;
+        case 0x01: mmu_init_ram(1 << 11); utils_log("2 kB\n"); break;
         case 0x02: 
                    /* MBC5 got bigger values */
                    if (mbc >= 0x19 && mbc <= 0x1E)
                    {
                        mmu_init_ram(1 << 16); 
-                       printf("64 kB\n"); 
+                       utils_log("64 kB\n"); 
                    }
                    else
                    {
                        mmu_init_ram(1 << 13); 
-                       printf("8 kB\n"); 
+                       utils_log("8 kB\n"); 
                    }
                    break;
-        case 0x03: mmu_init_ram(1 << 15); printf("32 kB\n"); break;
-        case 0x04: mmu_init_ram(1 << 17); printf("128 kB\n"); break;
-        case 0x05: mmu_init_ram(1 << 16); printf("64 kB\n"); break;
+        case 0x03: mmu_init_ram(1 << 15); utils_log("32 kB\n"); break;
+        case 0x04: mmu_init_ram(1 << 17); utils_log("128 kB\n"); break;
+        case 0x05: mmu_init_ram(1 << 16); utils_log("64 kB\n"); break;
     }
 
     /* save base name of the rom */

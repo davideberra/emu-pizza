@@ -148,7 +148,6 @@ uint8_t mmu_read_no_cyc(uint16_t a)
 uint8_t mmu_read(uint16_t a)
 {
 //    read4000++;
-
     /* always takes 4 cycles */
     cycles_step();
 
@@ -701,11 +700,11 @@ void mmu_write(uint16_t a, uint8_t v)
         /* need to switch? */
         if (b != mmu.rom_current_bank)
         {
-             /* copy from cartridge rom to GB switchable bank area */
-             memcpy(&mmu.memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
+            /* copy from cartridge rom to GB switchable bank area */
+            memcpy(&mmu.memory[0x4000], &cart_memory[b * 0x4000], 0x4000);
 
-             /* save new current bank */
-             mmu.rom_current_bank = b;
+            /* save new current bank */
+            mmu.rom_current_bank = b;
         }
 
         return; 
@@ -838,7 +837,8 @@ void mmu_write(uint16_t a, uint8_t v)
 
                     /* wanna stop HBLANK transfer? a zero on 7th bit will do */
                     if ((v & 0x80) == 0 && 
-                        mmu.hdma_transfer_mode == 0x01)
+                        mmu.hdma_transfer_mode == 0x01 &&
+                        mmu.hdma_to_transfer)
                     {
                         mmu.hdma_to_transfer = 0x00;
                         mmu.hdma_transfer_mode = 0x00;
@@ -901,10 +901,6 @@ void mmu_write(uint16_t a, uint8_t v)
 /* read 16 bit data from a memory addres */
 unsigned int mmu_read_16(uint16_t a)
 {
-    /* 16 bit read = +8 cycles */
-//    cycles_step();
-//    cycles_step();
-
     return (mmu_read(a) | (mmu_read(a + 1) << 8));
 }
 

@@ -32,6 +32,7 @@
 #include "input.h"
 #include "timer.h"
 #include "serial.h"
+#include "utils.h"
 #include "z80_gameboy_regs.h"
 #include "z80_gameboy.h"
 
@@ -90,7 +91,7 @@ void gameboy_init()
     mmu_write_no_cyc(0xFF25, 0xF3); 
     mmu_write_no_cyc(0xFF26, 0xF1);
     mmu_write_no_cyc(0xFF40, 0x91);
-    mmu_write_no_cyc(0xFF41, 0xF0);
+    mmu_write_no_cyc(0xFF41, 0x80);
     mmu_write_no_cyc(0xFF42, 0x00);
     mmu_write_no_cyc(0xFF43, 0x00);  
     mmu_write_no_cyc(0xFF44, 0x00);  
@@ -100,6 +101,7 @@ void gameboy_init()
     mmu_write_no_cyc(0xFF49, 0xFF); 
     mmu_write_no_cyc(0xFF4A, 0x00); 
     mmu_write_no_cyc(0xFF4B, 0x00); 
+    mmu_write_no_cyc(0xFF98, 0xDC);  
     mmu_write_no_cyc(0xFFFF, 0x00);  
     mmu_write_no_cyc(0xC000, 0x08);
     mmu_write_no_cyc(0xFFFE, 0x69);
@@ -194,9 +196,9 @@ void gameboy_run()
         op   = mmu_read(state.pc);
 
         /* print out CPU state if enabled by debug flag */
-/*        if (global_debug)
+        if (global_debug)
         {
-            printf("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ",
+            utils_log("OP: %02x F: %02x PC: %04x:%02x:%02x SP: %04x:%02x:%02x ",
                                    op, *state.f & 0xd0, state.pc, 
                                    mmu_read_no_cyc(state.pc + 1),
                                    mmu_read_no_cyc(state.pc + 2), state.sp,
@@ -204,9 +206,15 @@ void gameboy_run()
                                    mmu_read_no_cyc(state.sp + 1));
 
 
-            printf("A: %02x BC: %04x DE: %04x HL: %04x\n", state.a, *state.bc,
-                                                          *state.de, *state.hl);
-        }*/
+            utils_log("A: %02x BC: %04x DE: %04x HL: %04x FF41: %02x "
+                      "FF44: %02x ENAB: %02x INTE: %02x INTF: %02x\n", 
+                                                     state.a, *state.bc,
+                                                     *state.de, *state.hl,
+                                                     mmu_read_no_cyc(0xFF41),
+                                                     mmu_read_no_cyc(0xFF44),
+                                                     state.int_enable,
+                                                     *int_e, *int_f);
+        }
 
         /* execute instruction by the GB Z80 version */
         z80_execute(op);
@@ -225,6 +233,10 @@ void gameboy_run()
         /* check for interrupts */
         if ((state.int_enable || op == 0x76) && (int_r != 0))
         {
+            /* discard useless bits */
+            if ((int_r & 0x1F) == 0x00)
+                continue;
+
             /* beware of instruction that doesn't move PC! */
             /* like HALT (0x76)                            */
             if (op == 0x76)
@@ -257,7 +269,7 @@ void gameboy_run()
 
                 /* handle the interrupt! */
                 z80_intr(0x0048); 
-            }       
+            }
             else if ((int_r & 0x04) == 0x04)
             {
                 /* timer interrupt */
