@@ -873,6 +873,9 @@ void gpu_step()
                         /* set VBLANK interrupt flag */
                         gpu_if->lcd_vblank = 1;
 
+                        /* apply gameshark patches */
+                        mmu_apply_gs();
+
                         /* and finally push it on screen! */
                         gpu_draw_frame();
                     } 

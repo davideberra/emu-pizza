@@ -78,6 +78,27 @@ int main(int argc, char **argv)
     if (ret != 0)
         return 1;
 
+    /* apply cheat */
+
+    /* tetris */
+/*    mmu_set_cheat("00063D6E9");
+    mmu_set_cheat("3E064D5D0");
+    mmu_set_cheat("04065D087"); */
+
+    /* samurai shodown */
+    // mmu_set_cheat("11F86E3B6");
+    //)
+    // mmu_set_cheat("3EB60D7F1");
+    //
+
+    /* gameshark aladdin */
+   // mmu_set_cheat("01100ADC");
+
+    /* gameshark wario land */
+    // mmu_set_cheat("809965A9");
+
+   // mmu_apply_gg();
+
     /* initialize SDL video */
     if (SDL_Init(SDL_INIT_VIDEO) < 0 )
     {
@@ -227,6 +248,7 @@ int main(int argc, char **argv)
     network_stop();
 
     utils_log("Total cycles %d\n", cycles.cnt);
+    utils_log("Total running seconds %d\n", cycles.seconds);
 
     return 0;
 }

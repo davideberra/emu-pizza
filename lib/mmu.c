@@ -24,8 +24,9 @@
 #include "input.h"
 #include "mmu.h"
 #include "sound.h"
-#include "timer.h"
 #include "serial.h"
+#include "timer.h"
+#include "utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,120 @@ uint32_t ram_sz;
 
 /* main struct */
 mmu_t mmu;
+
+/* return absolute memory address */
+void *mmu_addr(uint16_t a)
+{
+    return (void *) &mmu.memory[a];
+}
+
+/* return absolute memory address */
+void *mmu_addr_vram0()
+{
+    return (void *) &mmu.vram0;
+}
+
+/* return absolute memory address */
+void *mmu_addr_vram1()
+{
+    return (void *) &mmu.vram1;
+}
+
+/* modify rom in case of Gamegenie cheat */
+void mmu_apply_gg()
+{
+    /* a wild cheat can occour */
+    if (mmu.gg_count == 0)
+        return;
+
+    int i;
+
+    for (i=0; i<mmu.gg_count; i++)
+    {
+        if (mmu.memory[mmu.gg_array[i].address] == mmu.gg_array[i].old_value)
+            mmu.memory[mmu.gg_array[i].address] = mmu.gg_array[i].new_value;
+    }
+}
+
+/* modify rom in case of Gameshark cheat */
+void mmu_apply_gs()
+{
+    /* a wild cheat can occour */
+    if (mmu.gs_count == 0)
+        return;
+
+    int i;
+    uint16_t address;
+
+    for (i=0; i<mmu.gs_count; i++)
+    {
+        address = mmu.gs_array[i].address;
+
+        if (address < 0xA000)
+            continue;
+
+        /* working ram */
+        if (address < 0xC000)
+        {
+            if (mmu.gs_array[i].ram_bank == mmu.ram_current_bank)
+                mmu.memory[address] = mmu.gs_array[i].new_value;
+ 
+            continue;
+        }    
+
+        /* fixed working ram */
+        if (address < 0xD000)
+        {
+            if (mmu.gs_array[i].ram_bank == 0)
+                mmu.memory[address] = mmu.gs_array[i].new_value;
+
+            continue;
+        }
+       
+        /* switchable working ram */
+        if (address < 0xE000)
+        {
+            if (mmu.gs_array[i].ram_bank == mmu.wram_current_bank)
+                mmu.memory[address] = mmu.gs_array[i].new_value;
+        }
+    }
+}
+
+/* debug purposes */
+void mmu_dump_all()
+{
+    int i;
+
+    printf("#### MAIN MEMORY ####\n\n");
+
+    for (i=0; i<0x10000; i++)
+    {
+        if ((i & 0x0f) == 0x00)
+            printf("\n%04x: ", i);
+        printf(" %02x", mmu.memory[i]);
+    }
+
+    if (global_cgb)
+    {
+        printf("#### VRAM 0 ####\n\n");
+
+        for (i=0; i<0x2000; i++)
+        {
+            if ((i & 0x0f) == 0x00)
+                printf("\n%04x: ", i);
+            printf(" %02x", mmu.vram0[i]);
+        }
+
+        printf("#### VRAM 1 ####\n\n");
+
+        for (i=0; i<0x2000; i++)
+        {
+            if ((i & 0x0f) == 0x00)
+                printf("\n%04x: ", i);
+            printf(" %02x", mmu.vram1[i]);
+        }
+    }
+}
 
 /* init (alloc) system state.memory */
 void mmu_init(uint8_t c, uint8_t rn)
@@ -117,37 +232,9 @@ void mmu_move(uint16_t d, uint16_t s)
     mmu_write(d, mmu_read(s));
 }
 
-/* return absolute memory address */
-void *mmu_addr(uint16_t a)
-{
-    return (void *) &mmu.memory[a];
-}
-
-/* return absolute memory address */
-void *mmu_addr_vram0()
-{
-    return (void *) &mmu.vram0;
-}
-
-/* return absolute memory address */
-void *mmu_addr_vram1()
-{
-    return (void *) &mmu.vram1;
-}
-
-/* read 8 bit data from a memory addres (not affecting cycles) */
-uint8_t mmu_read_no_cyc(uint16_t a)
-{
-    if (a >= 0xE000 && a <= 0xFDFF)
-        return mmu.memory[a - 0x2000];
-
-    return mmu.memory[a];
-}
-
 /* read 8 bit data from a memory addres */
 uint8_t mmu_read(uint16_t a)
 {
-//    read4000++;
     /* always takes 4 cycles */
     cycles_step();
 
@@ -251,10 +338,267 @@ uint8_t mmu_read(uint16_t a)
     return mmu.memory[a];
 }
 
-/* write 16 bit block on a memory address (no cycles affected) */
-void mmu_write_no_cyc(uint16_t a, uint8_t v)
+/* read 16 bit data from a memory addres */
+unsigned int mmu_read_16(uint16_t a)
 {
-    mmu.memory[a] = v;
+    return (mmu_read(a) | (mmu_read(a + 1) << 8));
+}
+
+/* read 8 bit data from a memory addres (not affecting cycles) */
+uint8_t mmu_read_no_cyc(uint16_t a)
+{
+    if (a >= 0xE000 && a <= 0xFDFF)
+        return mmu.memory[a - 0x2000];
+
+    return mmu.memory[a];
+}
+
+void mmu_restore_ram(char *fn)
+{   
+    /* save only if cartridge got a battery */
+    if (mmu.carttype == 0x03 ||
+        mmu.carttype == 0x06 ||
+        mmu.carttype == 0x09 ||
+        mmu.carttype == 0x0d ||
+        mmu.carttype == 0x0f ||
+        mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13 ||
+        mmu.carttype == 0x17 ||
+        mmu.carttype == 0x1b ||
+        mmu.carttype == 0x1e ||
+        mmu.carttype == 0x22 ||
+        mmu.carttype == 0xff)
+    {
+        FILE *fp = fopen(fn, "r+");
+
+        /* it could be not present */
+        if (fp == NULL)
+            return;
+
+        if (ram_sz <= 0x2000)
+        {
+            /* no need to put togheter pieces of ram banks */
+            fread(&mmu.memory[0xA000], ram_sz, 1, fp);
+        }
+        else
+        {
+            /* read entire file into ram buffer */
+            fread(mmu.ram_internal, 0x2000, 1, fp);
+            fread(ram, ram_sz, 1, fp);
+
+            /* copy internal RAM to 0xA000 address */
+            memcpy(&mmu.memory[0xA000], mmu.ram_internal, 0x2000);
+        }
+
+        fclose(fp);
+    } 
+}
+
+void mmu_restore_rtc(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13) 
+    {
+        FILE *fp = fopen(fn, "r+");
+
+        /* it could be not present */
+        if (fp == NULL)
+        {
+            /* just pick current time */
+            time(&mmu.rtc_time);
+            return;
+        }
+
+        /* read last saved time */
+        fscanf(fp, "%ld", &mmu.rtc_time);
+
+        fclose(fp);
+    }
+}
+
+void mmu_restore_stat(FILE *fp)
+{
+    fread(&mmu, 1, sizeof(mmu_t), fp);
+
+    if (ram_sz)
+        fread(ram, 1, ram_sz, fp);
+}
+
+void mmu_save_ram(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (mmu.carttype == 0x03 || 
+        mmu.carttype == 0x06 ||
+        mmu.carttype == 0x09 ||
+        mmu.carttype == 0x0d ||
+        mmu.carttype == 0x0f ||
+        mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13 ||
+        mmu.carttype == 0x17 ||
+        mmu.carttype == 0x1b ||
+        mmu.carttype == 0x1e ||
+        mmu.carttype == 0x22 ||
+        mmu.carttype == 0xff)
+    {
+        FILE *fp = fopen(fn, "w+");
+
+        if (fp == NULL)
+        {
+            printf("Error dumping RAM\n");
+            return;
+        } 
+
+        if (ram_sz <= 0x2000)
+        {
+            /* no need to put togheter pieces of ram banks */
+            fwrite(&mmu.memory[0xA000], ram_sz, 1, fp);
+        }
+        else
+        {
+            /* yes, i need to put togheter pieces */
+
+            /* save current used bank */
+            if (mmu.ram_external_enabled)
+                memcpy(&ram[0x2000 * mmu.ram_current_bank],
+                       &mmu.memory[0xA000], 0x2000);
+            else
+                memcpy(mmu.ram_internal,
+                       &mmu.memory[0xA000], 0x2000);
+            
+            /* dump the entire internal + external RAM */
+            fwrite(mmu.ram_internal, 0x2000, 1, fp); 
+            fwrite(ram, ram_sz, 1, fp); 
+        }
+
+        fclose(fp);
+    }
+}
+
+void mmu_save_rtc(char *fn)
+{
+    /* save only if cartridge got a battery */
+    if (mmu.carttype == 0x10 ||
+        mmu.carttype == 0x13)
+    {
+        FILE *fp = fopen(fn, "w+");
+
+        if (fp == NULL)
+        {
+            printf("Error saving RTC\n");
+            return;
+        }
+
+        fprintf(fp, "%ld", mmu.rtc_time);
+    }
+}
+
+void mmu_save_stat(FILE *fp)
+{
+    fwrite(&mmu, 1, sizeof(mmu_t), fp);
+
+    if (ram_sz)
+        fwrite(ram, 1, ram_sz, fp);
+}
+
+char mmu_set_cheat(char *str)
+{
+    if (str == NULL)
+        return 1;
+        
+    size_t len = strlen(str);
+    
+    /* gamegenie is 9 char long, gameshark is 8 char long */
+    if (len < 8 || len > 9)
+        return 1;
+        
+    unsigned int new_value, address, old_value;
+
+    /* gamegenie branch */    
+    if (len == 9)
+    {
+        char tmp[5];
+         
+        /* parse it (must be cleaned by - before) */
+        if (sscanf(str, "%02x", &new_value) < 1)
+            return 1;
+
+        /* build memory address */
+        tmp[0] = str[5];
+        tmp[1] = str[2];
+        tmp[2] = str[3];
+        tmp[3] = str[4];
+        tmp[4] = '\0';
+
+        if (sscanf(tmp, "%04x", &address) < 1)
+            return 1;
+
+        /* build old value */
+        tmp[0] = str[6];
+        tmp[1] = str[7];
+        tmp[2] = str[8];
+        tmp[3] = '\0';
+
+        if (sscanf(tmp, "%03x", &old_value) < 1)
+            return 1;
+
+        /* XOR data according do GameGenie specifications */
+        address ^= 0xF000;
+
+        if ((((old_value >> 8) ^ (old_value >> 4)) & 0x0F) != 0x08)
+        {
+            utils_log("Gamegenie cloak error\n");
+            return 1;
+        }
+
+        old_value = ((((old_value >> 2) & 0x03) | 
+                     ((old_value >> 6) & 0x3C) |
+                     ((old_value << 6) & 0xC0)) ^ 0xBA); 
+
+        /* save it into current array slot */
+        mmu.gg_array[mmu.gg_count].address   = (uint16_t) address;
+        mmu.gg_array[mmu.gg_count].new_value = (uint8_t)  new_value;
+        mmu.gg_array[mmu.gg_count].old_value = (uint8_t)  old_value;
+
+        /* looks legit! activate it */
+        mmu.gg_count++;
+
+        return 0;
+    }
+    else
+    {
+        unsigned int ram_bank, mem_low, mem_high;
+
+        /* it must be a game shark cheat */
+        if (sscanf(str, "%02x%02x%02x%02x", &ram_bank, &new_value,
+                                            &mem_low, &mem_high) < 4)
+            return 1;
+
+        /* save it */
+        mmu.gs_array[mmu.gs_count].address   = (uint16_t) 
+                                               (mem_low | (mem_high << 8));
+        mmu.gs_array[mmu.gs_count].ram_bank  = ram_bank & 0x7F;
+        mmu.gs_array[mmu.gs_count].new_value = new_value;
+
+/*        utils_log("Gameshark address %04x - bank %02x - value %02x\n", 
+               mmu.gs_array[mmu.gs_count].address,
+               mmu.gs_array[mmu.gs_count].ram_bank,
+               mmu.gs_array[mmu.gs_count].new_value);*/
+
+        /* looks legit! activate it */
+        mmu.gs_count++;
+    }
+    
+    return 1;
+}
+
+void mmu_term()
+{
+    if (ram)
+    {
+        free(ram);
+        ram = NULL;
+    }
 }
 
 /* write 16 bit block on a memory address */
@@ -632,7 +976,7 @@ void mmu_write(uint16_t a, uint8_t v)
 
                     if (v == 0x00)
                     {
-                        /* we got external RAM? some stupid game try to do shit */
+                        /* we got external RAM? some stpd game try to do shit */
                         if (ram_sz == 0)
                             return;
 
@@ -705,6 +1049,9 @@ void mmu_write(uint16_t a, uint8_t v)
 
             /* save new current bank */
             mmu.rom_current_bank = b;
+
+            /* re-apply cheats */
+            mmu_apply_gg();
         }
 
         return; 
@@ -739,13 +1086,6 @@ void mmu_write(uint16_t a, uint8_t v)
                 timer_write_reg(a, v);
                 return;
         }
-
-        /* resetting timer DIV */
-/*        if (a == 0xFF04)
-        {
-            mmu.memory[a] = 0x00;
-            return;
-        }*/
 
         /* LCD turned on/off? */
         if (a == 0xFF40)
@@ -898,12 +1238,6 @@ void mmu_write(uint16_t a, uint8_t v)
         mmu.memory[a] = v; 
 }
 
-/* read 16 bit data from a memory addres */
-unsigned int mmu_read_16(uint16_t a)
-{
-    return (mmu_read(a) | (mmu_read(a + 1) << 8));
-}
-
 /* write 16 bit block on a memory address */
 void mmu_write_16(uint16_t a, uint16_t v)
 {
@@ -915,194 +1249,14 @@ void mmu_write_16(uint16_t a, uint16_t v)
     cycles_step();
 }
 
-void mmu_save_ram(char *fn)
+
+/* write 16 bit block on a memory address (no cycles affected) */
+void mmu_write_no_cyc(uint16_t a, uint8_t v)
 {
-    /* save only if cartridge got a battery */
-    if (mmu.carttype == 0x03 || 
-        mmu.carttype == 0x06 ||
-        mmu.carttype == 0x09 ||
-        mmu.carttype == 0x0d ||
-        mmu.carttype == 0x0f ||
-        mmu.carttype == 0x10 ||
-        mmu.carttype == 0x13 ||
-        mmu.carttype == 0x17 ||
-        mmu.carttype == 0x1b ||
-        mmu.carttype == 0x1e ||
-        mmu.carttype == 0x22 ||
-        mmu.carttype == 0xff)
-    {
-        FILE *fp = fopen(fn, "w+");
-
-        if (fp == NULL)
-        {
-            printf("Error dumping RAM\n");
-            return;
-        } 
-
-        if (ram_sz <= 0x2000)
-        {
-            /* no need to put togheter pieces of ram banks */
-            fwrite(&mmu.memory[0xA000], ram_sz, 1, fp);
-        }
-        else
-        {
-            /* yes, i need to put togheter pieces */
-
-            /* save current used bank */
-            if (mmu.ram_external_enabled)
-                memcpy(&ram[0x2000 * mmu.ram_current_bank],
-                       &mmu.memory[0xA000], 0x2000);
-            else
-                memcpy(mmu.ram_internal,
-                       &mmu.memory[0xA000], 0x2000);
-            
-            /* dump the entire internal + external RAM */
-            fwrite(mmu.ram_internal, 0x2000, 1, fp); 
-            fwrite(ram, ram_sz, 1, fp); 
-        }
-
-        fclose(fp);
-    }
+    mmu.memory[a] = v;
 }
 
-void mmu_save_rtc(char *fn)
-{
-    /* save only if cartridge got a battery */
-    if (mmu.carttype == 0x10 ||
-        mmu.carttype == 0x13)
-    {
-        FILE *fp = fopen(fn, "w+");
 
-        if (fp == NULL)
-        {
-            printf("Error saving RTC\n");
-            return;
-        }
 
-        fprintf(fp, "%ld", mmu.rtc_time);
-    }
-}
 
-void mmu_restore_ram(char *fn)
-{   
-    /* save only if cartridge got a battery */
-    if (mmu.carttype == 0x03 ||
-        mmu.carttype == 0x06 ||
-        mmu.carttype == 0x09 ||
-        mmu.carttype == 0x0d ||
-        mmu.carttype == 0x0f ||
-        mmu.carttype == 0x10 ||
-        mmu.carttype == 0x13 ||
-        mmu.carttype == 0x17 ||
-        mmu.carttype == 0x1b ||
-        mmu.carttype == 0x1e ||
-        mmu.carttype == 0x22 ||
-        mmu.carttype == 0xff)
-    {
-        FILE *fp = fopen(fn, "r+");
 
-        /* it could be not present */
-        if (fp == NULL)
-            return;
-
-        if (ram_sz <= 0x2000)
-        {
-            /* no need to put togheter pieces of ram banks */
-            fread(&mmu.memory[0xA000], ram_sz, 1, fp);
-        }
-        else
-        {
-            /* read entire file into ram buffer */
-            fread(mmu.ram_internal, 0x2000, 1, fp);
-            fread(ram, ram_sz, 1, fp);
-
-            /* copy internal RAM to 0xA000 address */
-            memcpy(&mmu.memory[0xA000], mmu.ram_internal, 0x2000);
-        }
-
-        fclose(fp);
-    } 
-}
-
-void mmu_restore_rtc(char *fn)
-{
-    /* save only if cartridge got a battery */
-    if (mmu.carttype == 0x10 ||
-        mmu.carttype == 0x13) 
-    {
-        FILE *fp = fopen(fn, "r+");
-
-        /* it could be not present */
-        if (fp == NULL)
-        {
-            /* just pick current time */
-            time(&mmu.rtc_time);
-            return;
-        }
-
-        /* read last saved time */
-        fscanf(fp, "%ld", &mmu.rtc_time);
-
-        fclose(fp);
-    }
-}
-
-void mmu_dump_all()
-{
-    int i;
-
-    printf("#### MAIN MEMORY ####\n\n");
-
-    for (i=0; i<0x10000; i++)
-    {
-        if ((i & 0x0f) == 0x00)
-            printf("\n%04x: ", i);
-        printf(" %02x", mmu.memory[i]);
-    }
-
-    if (global_cgb)
-    {
-        printf("#### VRAM 0 ####\n\n");
-
-        for (i=0; i<0x2000; i++)
-        {
-            if ((i & 0x0f) == 0x00)
-                printf("\n%04x: ", i);
-            printf(" %02x", mmu.vram0[i]);
-        }
-
-        printf("#### VRAM 1 ####\n\n");
-
-        for (i=0; i<0x2000; i++)
-        {
-            if ((i & 0x0f) == 0x00)
-                printf("\n%04x: ", i);
-            printf(" %02x", mmu.vram1[i]);
-        }
-    }
-}
-
-void mmu_term()
-{
-    if (ram)
-    {
-        free(ram);
-        ram = NULL;
-    }
-}
-
-void mmu_save_stat(FILE *fp)
-{
-    fwrite(&mmu, 1, sizeof(mmu_t), fp);
-
-    if (ram_sz)
-        fwrite(ram, 1, ram_sz, fp);
-}
-
-void mmu_restore_stat(FILE *fp)
-{
-    fread(&mmu, 1, sizeof(mmu_t), fp);
-
-    if (ram_sz)
-        fread(ram, 1, ram_sz, fp);
-}

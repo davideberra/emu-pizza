@@ -193,7 +193,7 @@ void gameboy_run()
             sem_wait(&gameboy_sem);
 
         /* get op */
-        op   = mmu_read(state.pc);
+        op = mmu_read(state.pc);
 
         /* print out CPU state if enabled by debug flag */
         if (global_debug)
@@ -218,9 +218,6 @@ void gameboy_run()
 
         /* execute instruction by the GB Z80 version */
         z80_execute(op);
-
-        /* keep low bits always set to zero */
-        // *state.f &= 0xf0;
 
         /* if last op was Interrupt Enable (0xFB)  */
         /* we need to check for INTR on next cycle */
@@ -322,6 +319,7 @@ void gameboy_stop()
 char gameboy_restore_stat(int idx)
 {
     char path[256];
+    char buf[6];
 
     /* ensure i'm in pause */
     gameboy_set_pause(1);
@@ -333,7 +331,19 @@ char gameboy_restore_stat(int idx)
     FILE *fp = fopen(path, "r+");
 
     if (fp == NULL)
+    {
+        utils_log("Cannot open stat file\n");
         return 1;
+    }
+
+    /* read version */
+    fread(buf, 1, 6, fp);
+
+    if (memcmp(buf, "000001", 6))
+    {
+        utils_log("Version of stat file doesnt match\n");
+        return 1;
+    }
 
     /* restore CPU status */
     fread(&state, 1, sizeof(z80_state_t), fp);
@@ -370,6 +380,9 @@ char gameboy_save_stat(int idx)
 
     if (fp == NULL)
         return 1;
+
+    /* dump current version */
+    fwrite("000001", 1, 6, fp);
 
     /* dump cpu status */
     fwrite(&state, 1, sizeof(z80_state_t), fp);

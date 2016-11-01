@@ -59,6 +59,12 @@ void cycles_set_speed(char dbl)
     /* set global */
     global_cpu_double_speed = dbl;
 
+    /* update clock */
+    if (global_cpu_double_speed)
+        cycles.clock = 4194304 * 2;
+    else
+        cycles.clock = 4194304;
+
     /* calculate the mask */
     cycles_change_emulation_speed();
 } 
@@ -106,6 +112,10 @@ void cycles_step()
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, NULL);
         
         cycles.next += cycles.step;
+
+        /* update current running seconds */
+        if (cycles.cnt % cycles.clock == 0)
+            cycles.seconds++;
     }
 
     /* DMA */

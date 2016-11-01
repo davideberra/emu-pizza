@@ -40,6 +40,11 @@ typedef struct cycles_s
     /* step varying on cpu and emulation speed */
     uint_fast32_t          step;
 
+    /* total running seconds */
+    uint_fast32_t          seconds;
+
+    /* 2 spares */
+    uint_fast32_t          spare;
     uint_fast32_t          spare2;
 
 } cycles_t;

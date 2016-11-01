@@ -28,26 +28,50 @@
 void         *mmu_addr(uint16_t a);
 void         *mmu_addr_vram0();
 void         *mmu_addr_vram1();
+void          mmu_apply_gg();
+void          mmu_apply_gs();
 void          mmu_dump_all();
 void          mmu_init(uint8_t c, uint8_t rn);
 void          mmu_init_ram(uint32_t c);
 void          mmu_load(uint8_t *data, size_t sz, uint16_t a);
 void          mmu_load_cartridge(uint8_t *data, size_t sz);
 void          mmu_move(uint16_t d, uint16_t s);
-void          mmu_step();
 uint8_t       mmu_read_no_cyc(uint16_t a);
 uint8_t       mmu_read(uint16_t a);
-void          mmu_write_no_cyc(uint16_t a, uint8_t v);
-void          mmu_write(uint16_t a, uint8_t v);
 unsigned int  mmu_read_16(uint16_t a);
-void          mmu_write_16(uint16_t a, uint16_t v);
-void          mmu_save_ram(char *fn);
-void          mmu_save_rtc(char *fn);
 void          mmu_restore_ram(char *fn);
 void          mmu_restore_rtc(char *fn);
 void          mmu_restore_stat(FILE *fp);
+void          mmu_save_ram(char *fn);
+void          mmu_save_rtc(char *fn);
 void          mmu_save_stat(FILE *fp);
+char          mmu_set_cheat(char *cheat);
+void          mmu_step();
 void          mmu_term();
+void          mmu_write_no_cyc(uint16_t a, uint8_t v);
+void          mmu_write(uint16_t a, uint8_t v);
+void          mmu_write_16(uint16_t a, uint16_t v);
+
+typedef struct mmu_gamegenie_s {
+
+    /* data necessary */
+    uint16_t address;
+    uint8_t  old_value;
+    uint8_t  new_value;
+
+} mmu_gamegenie_t;
+
+typedef struct mmu_gameshark_s {
+
+    /* data necessary */
+    uint16_t address;
+    uint8_t  ram_bank;
+    uint8_t  new_value;
+
+} mmu_gameshark_t;
+
+#define MMU_GAMEGENIE_MAX 4
+#define MMU_GAMESHARK_MAX 32
 
 typedef struct mmu_s {
 
@@ -103,8 +127,16 @@ typedef struct mmu_s {
     uint8_t  rtc_mode;
     uint8_t  spare5;
     uint16_t spare6;
-    time_t  rtc_time;
-    time_t  rtc_latch_time;
+    time_t   rtc_time;
+    time_t   rtc_latch_time;
+    
+    /* Gamegenie */
+    uint8_t         gg_count;
+    mmu_gamegenie_t gg_array[MMU_GAMEGENIE_MAX];
+
+    /* Gameshark */
+    uint8_t         gs_count;
+    mmu_gameshark_t gs_array[MMU_GAMESHARK_MAX];
 
     uint_fast32_t          spare7;
     uint_fast32_t          spare8;
