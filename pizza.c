@@ -193,7 +193,7 @@ int main(int argc, char **argv)
                                    global_next_frame = 1; break;
                     case (SDLK_PLUS): 
                         if (global_emulation_speed != 
-                            GLOBAL_EMULATION_SPEED_DOUBLE) 
+                            GLOBAL_EMULATION_SPEED_4X) 
                         {
                             global_emulation_speed++; 
                             cycles_change_emulation_speed();

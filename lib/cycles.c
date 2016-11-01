@@ -90,6 +90,10 @@ void cycles_change_emulation_speed()
             cycles.step = ((4194304 / CYCLES_PAUSES) * 2 
                           << global_cpu_double_speed);
             break;
+        case GLOBAL_EMULATION_SPEED_4X:
+            cycles.step = ((4194304 / CYCLES_PAUSES) * 4
+                          << global_cpu_double_speed);
+            break;
     }
 }
 

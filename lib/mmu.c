@@ -465,7 +465,7 @@ void mmu_save_ram(char *fn)
             else
                 memcpy(mmu.ram_internal,
                        &mmu.memory[0xA000], 0x2000);
-            
+           
             /* dump the entire internal + external RAM */
             fwrite(mmu.ram_internal, 0x2000, 1, fp); 
             fwrite(ram, ram_sz, 1, fp); 
@@ -1024,11 +1024,19 @@ void mmu_write(uint16_t a, uint8_t v)
                 {
                     if ((0x2000 * (v & 0x0f)) < ram_sz)
                     {
+                        /* is externa RAM enabled? */
+                        if (!mmu.ram_external_enabled)
+                            break;
+
+                        /* wanna switch on the same bank? =\ just discard it */
+                        if ((v & 0x0f) == mmu.ram_current_bank)
+                            break;
+
                         /* save current bank */
                         memcpy(&ram[0x2000 * mmu.ram_current_bank],
                                &mmu.memory[0xA000], 0x2000);
 
-                        mmu.ram_current_bank = v & 0x0f;
+                        mmu.ram_current_bank = (v & 0x0f);
 
                         /* move new ram bank */
                         memcpy(&mmu.memory[0xA000],
