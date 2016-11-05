@@ -48,17 +48,31 @@ struct sockaddr_in network_peer_addr;
 /* uuid to identify myself */
 unsigned int network_uuid;
 
+/* uuid to identify peer */
+unsigned int network_peer_uuid;
+
 /* progressive number (debug purposes) */
 unsigned int network_prog = 0;
 
 /* track that network is running */
 unsigned char network_running = 0;
 
+/* broadcast address */
+char network_broadcast_addr[16];
+
 /* network thread */
 pthread_t network_thread;
 
 /* semaphorone */
 network_sem_t network_sem;
+
+/* function to call when connected to another Pizza Boy */
+network_cb_t network_connected_cb;
+network_cb_t network_disconnected_cb;
+
+/* timeout to declare peer disconnected */
+uint8_t network_timeout = 10;
+
 
 /* prototypes */
 void  network_sem_init(network_sem_t *p);
@@ -67,17 +81,29 @@ void  network_sem_wait(network_sem_t *p);
 void  network_send_data(uint8_t v, uint8_t clock);
 void *network_start_thread(void *args);
 
+/* is network running? */
+char network_is_running()
+{
+    return network_running;
+}
 
 /* start network thread */
-void network_start()
+void network_start(network_cb_t connected_cb, network_cb_t disconnected_cb,
+                   char *broadcast_addr)
 {
     /* init semaphore */
-    // sem_init(&network_sem, 0, 0);
     network_sem_init(&network_sem);
 
     /* reset bool */
     network_running = 0;
-    
+
+    /* set callback */
+    network_connected_cb    = connected_cb;
+    network_disconnected_cb = disconnected_cb;
+
+    /* save broadcast addr */
+    strncpy(network_broadcast_addr, broadcast_addr, 16);
+
     /* start thread! */
     pthread_create(&network_thread, NULL, network_start_thread, NULL);    
 }
@@ -134,11 +160,12 @@ void *network_start_thread(void *args)
 
     memset(&broadcast_addr, 0, sizeof(broadcast_addr));  
     broadcast_addr.sin_family = AF_INET;                
-    broadcast_addr.sin_addr.s_addr = INADDR_BROADCAST;
+//  broadcast_addr.sin_addr.s_addr = INADDR_BROADCAST;
 //    inet_aton("239.255.0.37",
 //              (struct in_addr *) &broadcast_addr.sin_addr.s_addr);
-    //inet_aton("192.168.10.168", 
-    //          (struct in_addr *) &broadcast_addr.sin_addr.s_addr);
+//    inet_aton("192.168.100.255", 
+    inet_aton(network_broadcast_addr, 
+              (struct in_addr *) &broadcast_addr.sin_addr.s_addr);
     broadcast_addr.sin_port = htons(64333);             
 
     /* setup listening socket */
@@ -183,7 +210,6 @@ void *network_start_thread(void *args)
     struct timeval tv;
     int timeouts = 4;
     unsigned int v, clock, prog;
-    // uint16_t prog;
 
     /* message parts */
     char         msg_type;
@@ -215,8 +241,6 @@ void *network_start_thread(void *args)
         /* one second timeout OR something received */
         ret = select(network_sock_bound + 1, &rfds, NULL, NULL, &tv);
 
-        // utils_log_urgent("SELECT RET: %d\n", ret);
-
         /* error! */
         if (ret == -1)
             break;
@@ -232,9 +256,24 @@ void *network_start_thread(void *args)
                 /* send broadcast message */
                 sendto(network_sock_broad, buf, strlen(buf), 0, 
                              (struct sockaddr *) &broadcast_addr, 
-                             sizeof(broadcast_addr));  
+                             sizeof(broadcast_addr));
+
+                // utils_log("Sending message %s", buf);
 
                 timeouts = 0;
+            }
+
+            if (serial.peer_connected)
+            {
+                if (--network_timeout == 0)
+                {
+                    /* notify serial module */
+                    serial.peer_connected = 0;
+
+                    /* notify by the cb */
+                    if (network_disconnected_cb)
+                        (*network_disconnected_cb) ();
+                }
             }
         }
         else
@@ -248,6 +287,8 @@ void *network_start_thread(void *args)
                          (struct sockaddr *) &addr_from, 
                          (socklen_t *) &addr_from_len)) < 1)
                 break;
+
+            // utils_log("Received message %s", buf);
 
             /* dissect message */
             if (sscanf(buf, "%c%08x%s", 
@@ -264,20 +305,19 @@ void *network_start_thread(void *args)
 
                         /* tell serial module something has arrived */
                         serial_recv_byte((uint8_t) v, (uint8_t) clock);
-
-                        /*if (clock == 0)
-                        {
-                            utils_ts_log("SEM POST\n");
-
-                            network_sem_post(&network_sem);
-                        } */
                     }
                     else if (msg_type == 'B')
                     {
                         /* someone is claiming is playing with the same game? */
-                        if (strcmp(msg_content, global_cart_name) == 0 && 
-                            serial.peer_connected == 0)
+                        // if (strcmp(msg_content, global_cart_name) == 0 && 
+                        if (serial.peer_connected == 0)
                         {
+                            /* save peer uuid */
+                            network_peer_uuid = msg_uuid;
+
+                            /* refresh timeout */
+                            network_timeout = 10;
+
                             /* save sender */
                             memcpy(&network_peer_addr, &addr_from, 
                                    sizeof(struct sockaddr_in));
@@ -296,17 +336,27 @@ void *network_start_thread(void *args)
 
                             /* log that peer is connected */
                             utils_log("Peer connected: %s\n", 
-			        inet_ntoa(network_peer_addr.sin_addr));
+			                    inet_ntoa(network_peer_addr.sin_addr));
 
                             /* YEAH */
                             serial.peer_connected = 1;
+
+                            /* notify by the cb */
+                            if (network_connected_cb)
+                                (*network_connected_cb) ();
+                        }
+                        else
+                        {
+                            /* refresh timeout */
+                            if (network_peer_uuid == msg_uuid)
+                                network_timeout = 10;
                         }
                     } 
                 }
             }
         }
     }
-   
+
     /* free serial */
     serial.peer_connected = 0;
 

@@ -17,6 +17,7 @@
 
 */
 
+#include <stdio.h>
 #include <strings.h>
 
 #include "global.h"
@@ -49,5 +50,5 @@ void global_init()
     global_emulation_speed = GLOBAL_EMULATION_SPEED_NORMAL;
     // bzero(global_save_folder, 256);
     bzero(global_rom_name, 256);
-    bzero(global_cart_name, 256);
+    sprintf(global_cart_name, "NOCARTIRDGE");
 }

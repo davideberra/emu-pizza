@@ -67,7 +67,7 @@ typedef struct serial_s {
     uint8_t  spare3;
     uint8_t  spare4;
 
-    uint_fast32_t          spare5;
+    uint_fast32_t  spare5;
 
 } serial_t;
 

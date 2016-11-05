@@ -210,9 +210,6 @@ void serial_send_byte(uint8_t v, uint8_t clock)
     /* trig an interrupt - this function is called */
     /* after a byte has been sent and received     */
     serial_if->serial_io = 1;
-
-    /* lock the serial */
-    // pthread_mutex_unlock(&serial_mutex);
 }
 
 void serial_set_send_cb(serial_data_send_cb_t cb)

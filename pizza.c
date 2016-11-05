@@ -36,6 +36,8 @@
 
 /* proto */
 void cb();
+void connected_cb();
+void disconnected_cb();
 void network_send_data(uint8_t v);
 void *start_thread(void *args);
 void *start_thread_network(void *args);
@@ -151,7 +153,7 @@ int main(int argc, char **argv)
     pthread_create(&thread, NULL, start_thread, NULL);
 
     /* start network thread! */
-    network_start();
+    network_start(&connected_cb, &disconnected_cb, "192.168.100.255");
 
     /* loop forever */
     while (!global_quit)
@@ -183,7 +185,9 @@ int main(int argc, char **argv)
                                    gameboy_restore_stat(0); 
                                    gameboy_set_pause(0);
                                    break;
-                    case (SDLK_9): network_start(); break;
+                    case (SDLK_9): network_start(&connected_cb, 
+                                                 &disconnected_cb,
+                                                 "192.168.100.255"); break;
                     case (SDLK_0): network_stop(); break;
                     case (SDLK_q): global_quit = 1; break;
                     case (SDLK_d): global_debug ^= 0x01; break;
@@ -312,6 +316,17 @@ void cb()
     /* Update the surface */
     SDL_UpdateWindowSurface(window);
 }
+
+void connected_cb()
+{
+    utils_log("Connected\n");
+}
+
+void disconnected_cb()
+{
+    utils_log("Disconnected\n");
+}
+
 
 /*
  *  Returns 1 if a directory has been created,

@@ -22,8 +22,14 @@
 
 #include <stdint.h>
 
+/* callback function */
+typedef void (*network_cb_t) ();
+
 /* prototypes */
-void network_start();
+char network_is_running();
+void network_start(network_cb_t connected_cb,
+                   network_cb_t disconnected_cb,
+                   char *broadcast_addr);
 void network_stop();
 
 #endif
