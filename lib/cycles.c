@@ -35,7 +35,6 @@
 /* timer stuff */
 struct itimerspec cycles_timer;
 timer_t           cycles_timer_id = 0;
-sem_t             cycles_sem;
 struct sigevent   cycles_te;
 struct sigaction  cycles_sa;
 
@@ -44,14 +43,31 @@ interrupts_flags_t *cycles_if;
 /* instance of the main struct */
 cycles_t cycles = { 0, 0, 0, 0 };
 
-#define CYCLES_PAUSES 4096
-
-/* internal prototype for timer handler */
-void cycles_timer_handler(int sigval);
+#define CYCLES_PAUSES 1024
 
 /* sync timing */
 struct timespec deadline;
-struct timespec dl;
+
+/* hard sync stuff (for remote connection) */
+uint8_t  cycles_hs_mode = 0;
+
+
+/* set hard sync mode. sync is given by the remote peer + local timer */
+void cycles_start_hs()
+{
+    utils_log("Hard sync mode ON\n");
+
+    /* boolean set to on */
+    cycles_hs_mode = 1;
+}
+
+void cycles_stop_hs()
+{
+    utils_log("Hard sync mode OFF\n");
+
+    /* boolean set to on */
+    cycles_hs_mode = 0;
+}
 
 /* set double or normal speed */
 void cycles_set_speed(char dbl)
@@ -120,6 +136,27 @@ void cycles_step()
         /* update current running seconds */
         if (cycles.cnt % cycles.clock == 0)
             cycles.seconds++;
+    }
+
+    /* hard sync next step */
+    if (cycles.cnt == cycles.hs_next)
+    {
+        /* set cycles for hard sync */
+//        cycles.hs_next += (17556 << global_cpu_double_speed);
+        cycles.hs_next += (4096 << global_cpu_double_speed);
+
+        /* hard sync is on? */
+        if (cycles_hs_mode)
+        {
+            /* send my status and wait for peer status back */
+            serial_send_byte(serial.data, serial.clock, serial.transfer_start);
+
+            /* wait for reply */
+            serial_wait_data();
+
+            /* verify if we need to trigger an interrupt */
+            serial_verify_intr();
+        }
     }
 
     /* DMA */
@@ -247,20 +284,33 @@ void cycles_step()
         /* reset counter */
         serial.bits_sent = 0;
 
-        /* call function that will phisically send the packet */
-        if (serial.peer_connected)
-            serial_send_byte(serial.data_to_send, serial.clock);
-        else
-        {
-            /* gotta reply with 0xff when asking for ff01 */
-            serial.data = 0xFF;
+        /* gotta reply with 0xff when asking for ff01 */
+        serial.data = 0xFF;
 
-            /* reset transfer_start flag to yell I'M DONE */
-            serial.transfer_start = 0;
+        /* reset transfer_start flag to yell I'M DONE */
+        serial.transfer_start = 0;
 
-            /* if not connected, trig the fucking interrupt */
-            cycles_if->serial_io = 1;
-        }
+        /* if not connected, trig the fucking interrupt */
+        cycles_if->serial_io = 1;
+    }    
+}
+
+/* things to do when vsync kicks in */
+void cycles_vsync()
+{
+    return;
+
+    /* hard sync is on? */
+    if (cycles_hs_mode)
+    {
+        /* send my status and wait for peer status back */
+        serial_send_byte(serial.data, serial.clock, serial.transfer_start);
+
+        /* wait for reply */
+        serial_wait_data();
+
+        /* verify if we need to trigger an interrupt */
+        serial_verify_intr();
     }
 }
 
@@ -277,46 +327,14 @@ char cycles_init()
     /* init clock and counter */
     cycles.clock = 4194304;
     cycles.cnt = 0;
+    cycles.hs_next = 70224;
 
     /* mask for pauses cycles fast calc */
     cycles.step = 4194304 / CYCLES_PAUSES;
     cycles.next = 4194304 / CYCLES_PAUSES;
 
-    /* init semaphore for cpu clocks sync */
-//    sem_init(&cycles_sem, 0, 0);
-
-    /* prepare timer to emulate video refresh interrupts */
-/*    cycles_sa.sa_flags = SA_SIGINFO;
-    sigemptyset(&cycles_sa.sa_mask);
-
-    if (sigaction(SIGRTMIN, &cycles_sa, NULL) == -1)
-        return 1;
-    bzero(&cycles_te, sizeof(struct sigevent));*/
-
-    /* set and enable alarm */
-/*    cycles_te.sigev_notify = SIGEV_THREAD;
-    cycles_te.sigev_signo = SIGRTMIN;
-    cycles_te.sigev_notify_function = (void *) cycles_timer_handler;
-    cycles_te.sigev_value.sival_ptr = &cycles_timer_id;*/
-
-    /* init mutexes for pause/resume sync */
-/*    pthread_mutex_init(&cycles_mutex, NULL);
-    pthread_cond_init(&cycles_cond, NULL);*/
-
     return 0;
-
-    /* start timer */
-//    return cycles_start_timer();
 }
-
-
-
-
-
-
-
-
-
 
 char cycles_start_timer()
 {
@@ -324,51 +342,16 @@ char cycles_start_timer()
     clock_gettime(CLOCK_MONOTONIC, &deadline);
 
     return 0;
-
-    /*if (cycles.inited == 0)
-        return 0;
-
-    timer_create(CLOCK_REALTIME, &cycles_te, &cycles_timer_id);*/
-
-    /* initialize CYCLES_PAUSES hits per second timer */
-/*    cycles_timer.it_value.tv_sec = 1;
-    cycles_timer.it_value.tv_nsec = 1000;
-    cycles_timer.it_interval.tv_sec = 0;
-    cycles_timer.it_interval.tv_nsec = 1000000000 / CYCLES_PAUSES;*/
-
-    /* start timer */
-//    timer_settime(cycles_timer_id, 0, &cycles_timer, NULL);
-
-//    return 0;
 }
 
 void cycles_stop_timer()
 {
     if (cycles.inited == 0)
         return;
-
-//    timer_delete(cycles_timer_id);
-}
-
-/* callback for timer events (64 times per second) */
-void cycles_timer_handler(int sigval)
-{
-    sem_post(&cycles_sem);
 }
 
 void cycles_term()
 {
-    //if (cycles.inited == 0)
-    //    return;
-
-    /* stop timer */
-    //timer_delete(cycles_timer_id);
-
-    /* post it in case it was stuck */
-    //sem_post(&cycles_sem);
-
-    /* destroy semaphore */
-    //sem_destroy(&cycles_sem);
 }
 
 void cycles_save_stat(FILE *fp)
@@ -380,7 +363,7 @@ void cycles_restore_stat(FILE *fp)
 {
     fread(&cycles, 1, sizeof(cycles_t), fp);
 
-    /* recalc spee stuff */
+    /* recalc speed stuff */
     cycles_change_emulation_speed();
 }
 

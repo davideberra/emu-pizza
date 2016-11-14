@@ -876,6 +876,9 @@ void gpu_step()
                         /* apply gameshark patches */
                         mmu_apply_gs();
 
+                        /* notify synchronizer we've just entered vsync */
+                    //    cycles_vsync();
+
                         /* and finally push it on screen! */
                         gpu_draw_frame();
                     } 
@@ -897,6 +900,9 @@ void gpu_step()
 
                     /* inc current line */
                     (*gpu.ly)++;
+
+                    // if (*gpu.ly % 10 == 0)
+                    //     cycles_vsync();
 
                     /* reset clock counter */
              //       gpu.clocks -= 204;

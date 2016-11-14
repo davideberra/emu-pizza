@@ -517,6 +517,12 @@ char mmu_set_cheat(char *str)
     /* gamegenie branch */    
     if (len == 9)
     {
+        if (mmu.gg_count == MMU_GAMEGENIE_MAX)
+        {
+            utils_log("Max Gamegenie cheats reached");
+            return 1;
+        }
+
         char tmp[5];
          
         /* parse it (must be cleaned by - before) */
@@ -572,7 +578,16 @@ char mmu_set_cheat(char *str)
         /* it must be a game shark cheat */
         if (sscanf(str, "%02x%02x%02x%02x", &ram_bank, &new_value,
                                             &mem_low, &mem_high) < 4)
+        {
+            utils_log("Wrong Gameshark format");
             return 1;
+        }
+
+        if (mmu.gs_count == MMU_GAMESHARK_MAX)
+        {
+            utils_log("Max Gameshark cheats reached");
+            return 1;
+        }
 
         /* save it */
         mmu.gs_array[mmu.gs_count].address   = (uint16_t) 
@@ -587,8 +602,12 @@ char mmu_set_cheat(char *str)
 
         /* looks legit! activate it */
         mmu.gs_count++;
+
+        return 0;
     }
-    
+
+    utils_log("Unknown cheat format");
+
     return 1;
 }
 

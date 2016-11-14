@@ -18,6 +18,7 @@
 */
 
 #include "global.h"
+#include "utils.h"
 
 #include <stdint.h>
 

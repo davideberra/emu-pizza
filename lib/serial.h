@@ -59,31 +59,40 @@ typedef struct serial_s {
     /* peer connected? */
     uint8_t  peer_connected:1;
     uint8_t  data_sent:1;
+    uint8_t  data_sent_clock:1;
+    uint8_t  data_sent_transfer_start:1;
     uint8_t  data_recv:1;
     uint8_t  data_recv_clock:1;
-    uint8_t  spare10:4;
+    uint8_t  data_recv_transfer_start:1;
+    uint8_t  spare10:1;
 
     uint8_t  spare2;
     uint8_t  spare3;
     uint8_t  spare4;
 
-    uint_fast32_t  spare5;
+    uint_fast32_t  last_send_cnt;
 
 } serial_t;
 
 extern serial_t serial;
 
 /* callback when receive something on serial */
-typedef void (*serial_data_send_cb_t) (uint8_t v, uint8_t clock);
+typedef void (*serial_data_send_cb_t) (uint8_t v, uint8_t clock, 
+                                       uint8_t transfer_start);
 
 /* prototypes */
 void    serial_init();
+void    serial_lock();
 void    serial_write_reg(uint16_t a, uint8_t v);
+void    serial_verify_intr();
 uint8_t serial_read_reg(uint16_t a);
-void    serial_recv_byte(uint8_t v, uint8_t clock);
+void    serial_recv_byte(uint8_t v, uint8_t clock, uint8_t transfer_start);
+void    serial_recv_clock();
 void    serial_save_stat(FILE *fp);
-void    serial_send_byte(uint8_t v, uint8_t clock);
+void    serial_send_byte(uint8_t v, uint8_t clock, uint8_t transfer_start);
 void    serial_set_send_cb(serial_data_send_cb_t cb);
 void    serial_restore_stat(FILE *fp);
+void    serial_unlock();
+void    serial_wait_data();
 
 #endif

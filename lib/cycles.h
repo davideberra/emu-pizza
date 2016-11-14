@@ -44,12 +44,18 @@ typedef struct cycles_s
     uint_fast32_t          seconds;
 
     /* 2 spares */
-    uint_fast32_t          spare;
+    uint_fast32_t          hs_next;
     uint_fast32_t          spare2;
 
 } cycles_t;
 
 extern cycles_t cycles;
+
+// extern uint8_t  cycles_hs_local_cnt;
+// extern uint8_t  cycles_hs_peer_cnt;
+
+/* callback function */
+typedef void (*cycles_send_cb_t) (uint32_t v);
 
 /* prototypes */
 void cycles_change_emulation_speed();
@@ -57,9 +63,12 @@ char cycles_init();
 void cycles_restore_stat(FILE *fp);
 void cycles_save_stat(FILE *fp);
 void cycles_set_speed(char dbl);
+void cycles_start_hs();
 char cycles_start_timer();
 void cycles_step();
+void cycles_stop_hs();
 void cycles_stop_timer();
 void cycles_term();
+void cycles_vsync();
 
 #endif
