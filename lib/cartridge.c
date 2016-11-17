@@ -96,9 +96,15 @@ char cartridge_load(char *file_gb)
         case 0x19: utils_log("MBC5\n"); break;
         case 0x1A: utils_log("MBC5 + RAM\n"); break;
         case 0x1B: utils_log("MBC5 + RAM + BATTERY\n"); break;
-        case 0x1C: utils_log("MBC5 + RUMBLE\n"); break;
-        case 0x1D: utils_log("MBC5 + RUMBLE + RAM\n"); break;
-        case 0x1E: utils_log("MBC5 + RUMBLE + RAM + BATTERY\n"); break;
+        case 0x1C: global_rumble = 1; 
+                   utils_log("MBC5 + RUMBLE\n"); 
+                   break;
+        case 0x1D: global_rumble = 1; 
+                   utils_log("MBC5 + RUMBLE + RAM\n"); 
+                   break;
+        case 0x1E: global_rumble = 1; 
+                   utils_log("MBC5 + RUMBLE + RAM + BATTERY\n"); 
+                   break;
 
         default: utils_log("Unknown cartridge type: %02x\n", mbc);
                  return 2;

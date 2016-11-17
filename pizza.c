@@ -38,6 +38,7 @@
 void cb();
 void connected_cb();
 void disconnected_cb();
+void rumble_cb(uint8_t rumble);
 void network_send_data(uint8_t v);
 void *start_thread(void *args);
 void *start_thread_network(void *args);
@@ -145,6 +146,9 @@ int main(int argc, char **argv)
 
     /* set sound output rate */
     sound_set_output_rate(44100);
+
+    /* set rumble cb */
+    mmu_set_rumble_cb(&rumble_cb);
 
     /* get frame buffer reference */
     fb = gpu_get_frame_buffer();    
@@ -325,6 +329,12 @@ void connected_cb()
 void disconnected_cb()
 {
     utils_log("Disconnected\n");
+}
+
+void rumble_cb(uint8_t rumble)
+{
+    if (rumble)
+        printf("RUMBLE\n");
 }
 
 

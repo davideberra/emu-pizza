@@ -185,18 +185,19 @@ end:
     pthread_mutex_unlock(&serial_mutex);
 }
 
-void serial_send_byte(uint8_t v, uint8_t clock, uint8_t transfer_start)
+void serial_send_byte()
 {
     /* lock the serial */
     pthread_mutex_lock(&serial_mutex);
 
     serial.data_sent = 1;
-    serial.data_to_send = v; 
-    serial.data_sent_clock = clock; 
-    serial.data_sent_transfer_start = transfer_start; 
+    serial.data_to_send = serial.data; 
+    serial.data_sent_clock = serial.clock; 
+    serial.data_sent_transfer_start = serial.transfer_start; 
 
     if (serial_data_send_cb)
-        (*serial_data_send_cb) (v, clock, transfer_start);
+        (*serial_data_send_cb) (serial.data, serial.clock, 
+                                serial.transfer_start);
 
     /* unlock the serial */
     pthread_mutex_unlock(&serial_mutex);

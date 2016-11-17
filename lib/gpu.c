@@ -162,7 +162,7 @@ void gpu_toggle(uint8_t state)
         /* LCD turned on */
         gpu.next = cycles.cnt + (456 << global_cpu_double_speed);
         *gpu.ly  = 0;
-        (*gpu.lcd_status).mode = 0x01;
+        (*gpu.lcd_status).mode = 0x00;
         (*gpu.lcd_status).ly_coincidence = 0x00;
     }
     else
@@ -637,7 +637,7 @@ void gpu_draw_window_line(int tile_idx, uint8_t frame_x,
     p = (line - frame_y) * 2; 
 
     /* calc frame position buffer for 4 pixels */
-    uint32_t pos_fb = (line * 160); //(tile_pos_fb + (tile_y * 160)) % (160 * 144); 
+    uint32_t pos_fb = (line * 160); 
 
     /* calc tile pointer */
     int16_t tile_ptr = (tile_n * 16) + p;
@@ -836,181 +836,174 @@ void gpu_draw_sprite_line(gpu_oam_t *oam, uint8_t sprites_size, uint8_t line)
 /* update GPU internal state given CPU T-states */
 void gpu_step()
 {
-    /* advance only in case of turned on display */
-//    if ((*gpu.lcd_ctrl).display == 0)
-//        return;
+    char ly_changed = 0;
+    char mode_changed = 0;
 
-//    if (gpu.next == cycles.cnt)
-//    { 
-        char ly_changed = 0;
-        char mode_changed = 0;
+    /* take different action based on current state */
+    switch((*gpu.lcd_status).mode)
+    {
+        /*
+         * during HBLANK (CPU can access VRAM)
+         */
+        case 0: 
+                /* handle HDMA stuff during hblank */
+                cycles_hdma();
 
-        /* take different action based on current state */
-        switch((*gpu.lcd_status).mode)
-        {
-            /*
-             * during HBLANK (CPU can access VRAM)
-             */
-            case 0: 
-                    /*
-                     * if current line == 143 (and it's about to turn 144)
-                     * enter mode 01 (VBLANK)
-                     */
-                    if (*gpu.ly == 143)
-                    {
-                        /* notify mode has changes */
-                        mode_changed = 1;
+                /*
+                 * if current line == 143 (and it's about to turn 144)
+                 * enter mode 01 (VBLANK)
+                 */
+                if (*gpu.ly == 143)
+                {
+                    /* notify mode has changes */
+                    mode_changed = 1;
 
-                        (*gpu.lcd_status).mode = 0x01;
+                    (*gpu.lcd_status).mode = 0x01;
 
-                        /* mode one lasts 456 cycles */
-                        gpu.next = cycles.cnt + 
-                                   (456 << global_cpu_double_speed);
+                    /* mode one lasts 456 cycles */
+                    gpu.next = cycles.cnt + 
+                               (456 << global_cpu_double_speed);
 
-                        /* DRAW! TODO */
-                        /* CHECK INTERRUPTS! TODO */
+                    /* DRAW! TODO */
+                    /* CHECK INTERRUPTS! TODO */
+                    cycles_vblank();
 
-                        /* set VBLANK interrupt flag */
-                        gpu_if->lcd_vblank = 1;
+                    /* set VBLANK interrupt flag */
+                    gpu_if->lcd_vblank = 1;
 
-                        /* apply gameshark patches */
-                        mmu_apply_gs();
+                    /* apply gameshark patches */
+                    mmu_apply_gs();
 
-                        /* notify synchronizer we've just entered vsync */
-                    //    cycles_vsync();
-
-                        /* and finally push it on screen! */
-                        gpu_draw_frame();
-                    } 
-                    else
-                    {
-                        /* notify mode has changed */
-                        mode_changed = 1;
-
-                        /* enter OAM mode */
-                        (*gpu.lcd_status).mode = 0x02;
-
-                        /* mode 2 needs 80 cycles */
-                        gpu.next = cycles.cnt + 
-                                   (80 << global_cpu_double_speed);
-                    }
-
-                    /* notify mode has changed */
-                    ly_changed = 1;
-
-                    /* inc current line */
-                    (*gpu.ly)++;
-
-                    // if (*gpu.ly % 10 == 0)
-                    //     cycles_vsync();
-
-                    /* reset clock counter */
-             //       gpu.clocks -= 204;
-
-                    break;
-
-            /*
-             * during VBLANK (CPU can access VRAM)
-             */
-            case 1: 
-                    /* reset clock counter */
-                    // gpu.clocks -= 456;
-
-                    /* notify ly has changed */
-                    ly_changed = 1;
-
-                    /* inc current line */
-                    (*gpu.ly)++;
-
-                    /* reached the bottom? */
-                    if ((*gpu.ly) > 153)
-                    {
-                        /* go back to line 0 */
-                        (*gpu.ly) = 0;
-
-                        /* switch to OAM mode */
-                        (*gpu.lcd_status).mode = 0x02;
-
-                        /* */
-                        gpu.next = 
-			    cycles.cnt + (80 << global_cpu_double_speed);
-                    }
-                    else
-                        gpu.next = 
-			    cycles.cnt + (456 << global_cpu_double_speed);
-
-                    break;
-
-            /*
-             * during OAM (LCD access FE00-FE90, so CPU cannot)
-             */
-            case 2: 
-                    /* reset clock counter */
-                    gpu.next = 
-	                cycles.cnt + (172 << global_cpu_double_speed);
-
+                    /* and finally push it on screen! */
+                    gpu_draw_frame();
+                } 
+                else
+                {
                     /* notify mode has changed */
                     mode_changed = 1;
 
-                    /* switch to VRAM mode */
-                    (*gpu.lcd_status).mode = 0x03;
+                    /* enter OAM mode */
+                    (*gpu.lcd_status).mode = 0x02;
 
-                    break;
+                    /* mode 2 needs 80 cycles */
+                    gpu.next = cycles.cnt + 
+                               (80 << global_cpu_double_speed);
 
-            /*
-             * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
-             */
-            case 3: 
-                    /* reset clock counter */
+                }
+
+                /* notify mode has changed */
+                ly_changed = 1;
+
+                /* inc current line */
+                (*gpu.ly)++;
+
+//                cycles_hblank(*gpu.ly);
+
+                break;
+
+        /*
+         * during VBLANK (CPU can access VRAM)
+         */
+        case 1: 
+                /* notify ly has changed */
+                ly_changed = 1;
+
+                /* inc current line */
+                (*gpu.ly)++;
+
+                /* reached the bottom? */
+                if ((*gpu.ly) > 153)
+                {
+                    /* go back to line 0 */
+                    (*gpu.ly) = 0;
+
+                    /* switch to OAM mode */
+                    (*gpu.lcd_status).mode = 0x02;
+
+                    /* */
                     gpu.next = 
-	                cycles.cnt + (204 << global_cpu_double_speed);
+                        cycles.cnt + (80 << global_cpu_double_speed);
+                }
+                else
+                    gpu.next = 
+                        cycles.cnt + (456 << global_cpu_double_speed);
 
-                    /* notify mode has changed */
-                    mode_changed = 1;
+                break;
 
-                    /* go back to HBLANK mode */
-                    (*gpu.lcd_status).mode = 0x00;
+        /*
+         * during OAM (LCD access FE00-FE90, so CPU cannot)
+         */
+        case 2: 
+                /* reset clock counter */
+                gpu.next = 
+	                    cycles.cnt + (172 << global_cpu_double_speed);
 
-                    /* draw line */
-                    gpu_draw_line(*gpu.ly);
+                /* notify mode has changed */
+                mode_changed = 1;
 
-                    break;
+                /* switch to VRAM mode */
+                (*gpu.lcd_status).mode = 0x03;
+
+                break;
+
+        /*
+         * during VRAM (LCD access both OAM and VRAM, so CPU cannot)
+         */
+        case 3: 
+                /* reset clock counter */
+                gpu.next = 
+                    cycles.cnt + (204 << global_cpu_double_speed);
+
+                /* notify mode has changed */
+                mode_changed = 1;
+
+                /* go back to HBLANK mode */
+                (*gpu.lcd_status).mode = 0x00;
+
+                /* draw line */
+                gpu_draw_line(*gpu.ly);
+
+                /* notify cycles */
+//                cycles_hblank(*gpu.ly);
+
+                //printf("COLLA %d\n", *gpu.ly);
+
+                break;
+    }
+
+    /* ly changed? is it the case to trig an interrupt? */
+    if (ly_changed)
+    {
+        /* check if we gotta trigger an interrupt */
+        if ((*gpu.ly) == (*gpu.lyc))
+        { 
+            /* set lcd status flags indicating there's a concidence */
+            (*gpu.lcd_status).ly_coincidence = 1;
+
+            /* an interrupt is desiderable? */
+            if ((*gpu.lcd_status).ir_ly_coincidence)
+                gpu_if->lcd_ctrl = 1;
         }
-
-        /* ly changed? is it the case to trig an interrupt? */
-        if (ly_changed)
+        else
         {
-            /* check if we gotta trigger an interrupt */
-            if ((*gpu.ly) == (*gpu.lyc))
-            { 
-                /* set lcd status flags indicating there's a concidence */
-                (*gpu.lcd_status).ly_coincidence = 1;
-
-                /* an interrupt is desiderable? */
-                if ((*gpu.lcd_status).ir_ly_coincidence)
-                    gpu_if->lcd_ctrl = 1;
-            }
-            else
-            {
-                /* set lcd status flags indicating there's NOT a concidence */
-                (*gpu.lcd_status).ly_coincidence = 0;
-            }
+            /* set lcd status flags indicating there's NOT a concidence */
+            (*gpu.lcd_status).ly_coincidence = 0;
         }
+    }
 
-        /* mode changed? is is the case to trig an interrupt? */
-        if (mode_changed)
-        {
-            if ((*gpu.lcd_status).mode == 0x00 &&
-                (*gpu.lcd_status).ir_mode_00)
-                gpu_if->lcd_ctrl = 1;
-            else if ((*gpu.lcd_status).mode == 0x01 &&
-                     (*gpu.lcd_status).ir_mode_01)
-                gpu_if->lcd_ctrl = 1;
-            else if ((*gpu.lcd_status).mode == 0x02 &&
-                     (*gpu.lcd_status).ir_mode_10)
-                gpu_if->lcd_ctrl = 1;
-        }
-//    }
+    /* mode changed? is is the case to trig an interrupt? */
+    if (mode_changed)
+    {
+        if ((*gpu.lcd_status).mode == 0x00 &&
+            (*gpu.lcd_status).ir_mode_00)
+            gpu_if->lcd_ctrl = 1;
+        else if ((*gpu.lcd_status).mode == 0x01 &&
+                 (*gpu.lcd_status).ir_mode_01)
+            gpu_if->lcd_ctrl = 1;
+        else if ((*gpu.lcd_status).mode == 0x02 &&
+                 (*gpu.lcd_status).ir_mode_10)
+            gpu_if->lcd_ctrl = 1;
+    }
 }
 
 uint8_t gpu_read_reg(uint16_t a)

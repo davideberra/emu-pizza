@@ -228,8 +228,6 @@ void sound_step_ch3()
     uint_fast16_t freq = sound.nr33->frequency_lsb |
                          (sound.nr34->frequency_msb << 8);
 
-    sound.channel_three.frequency = freq; 
-
     /* qty of cpu ticks needed for a wave sample change */
     sound.channel_three.cycles = ((2048 - freq) * 2) << global_cpu_double_speed; 
     sound.channel_three.cycles_next += sound.channel_three.cycles;
@@ -786,7 +784,14 @@ uint8_t sound_read_reg(uint16_t a, uint8_t v)
         case 0xFF3F: 
             if (sound.channel_three.active)
             {
-                if (!global_cgb && sound.channel_three.ram_access != 0)
+/*                if (!global_cgb && sound.channel_three.ram_access != 0)
+                {
+                    printf("RAM ACCESSO NON ZERO %u - CNT %d NEXT %d\n",
+                            sound.channel_three.ram_access, cycles.cnt, sound.channel_three.ram_access_next);
+                    return 0xFF;
+                }*/
+                if (!global_cgb && 
+                    cycles.cnt < sound.channel_three.ram_access_next)
                     return 0xFF;
 
                 return sound.wave_table[sound.channel_three.index >> 1];
@@ -1197,7 +1202,6 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* setting internal modules data with stuff taken from memory */
                 sound.channel_three.active = 1;
-                sound.channel_three.frequency = freq;
 
                 uint_fast32_t old_cycles = sound.channel_three.cycles;
 
@@ -1245,6 +1249,16 @@ void sound_write_reg(uint16_t a, uint8_t v)
 
                 /* i accessed to the wave RAM... */
                 sound.channel_three.ram_access = sound.channel_three.cycles; 
+
+                if (sound.channel_three.cycles % 4 == 0)
+                    sound.channel_three.ram_access_next = 
+                        cycles.cnt + sound.channel_three.cycles; 
+                    else 
+                        sound.channel_three.ram_access_next = -1;
+
+/*                printf("RAM ACCESS RICARICATO %u - CNT %d CYCLES %d \n",
+                       sound.channel_three.ram_access, 
+                       cycles.cnt, sound.channel_three.cycles);*/
             }
             break;
 
@@ -1381,7 +1395,9 @@ void sound_write_wave(uint16_t a, uint8_t v)
 {
     if (sound.channel_three.active)
     {
-        if (!global_cgb && sound.channel_three.ram_access != 0)
+//        if (!global_cgb && sound.channel_three.ram_access != 0)
+//            return;
+        if (!global_cgb && cycles.cnt < sound.channel_three.ram_access_next)
             return;
 
         sound.wave_table[sound.channel_three.index >> 1] = v;

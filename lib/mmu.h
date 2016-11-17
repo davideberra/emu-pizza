@@ -24,34 +24,6 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-/* functions prototypes */
-void         *mmu_addr(uint16_t a);
-void         *mmu_addr_vram0();
-void         *mmu_addr_vram1();
-void          mmu_apply_gg();
-void          mmu_apply_gs();
-void          mmu_dump_all();
-void          mmu_init(uint8_t c, uint8_t rn);
-void          mmu_init_ram(uint32_t c);
-void          mmu_load(uint8_t *data, size_t sz, uint16_t a);
-void          mmu_load_cartridge(uint8_t *data, size_t sz);
-void          mmu_move(uint16_t d, uint16_t s);
-uint8_t       mmu_read_no_cyc(uint16_t a);
-uint8_t       mmu_read(uint16_t a);
-unsigned int  mmu_read_16(uint16_t a);
-void          mmu_restore_ram(char *fn);
-void          mmu_restore_rtc(char *fn);
-void          mmu_restore_stat(FILE *fp);
-void          mmu_save_ram(char *fn);
-void          mmu_save_rtc(char *fn);
-void          mmu_save_stat(FILE *fp);
-char          mmu_set_cheat(char *cheat);
-void          mmu_step();
-void          mmu_term();
-void          mmu_write_no_cyc(uint16_t a, uint8_t v);
-void          mmu_write(uint16_t a, uint8_t v);
-void          mmu_write_16(uint16_t a, uint16_t v);
-
 typedef struct mmu_gamegenie_s {
 
     /* data necessary */
@@ -138,11 +110,43 @@ typedef struct mmu_s {
     uint8_t         gs_count;
     mmu_gameshark_t gs_array[MMU_GAMESHARK_MAX];
 
-    uint_fast32_t          spare7;
-    uint_fast32_t          spare8;
+    uint_fast32_t   dma_next;
+    uint_fast32_t   spare8;
 
 } mmu_t;
 
 extern mmu_t mmu;
+
+/* callback function */
+typedef void (*mmu_rumble_cb_t) (uint8_t onoff);
+
+/* functions prototypes */
+void         *mmu_addr(uint16_t a);
+void         *mmu_addr_vram0();
+void         *mmu_addr_vram1();
+void          mmu_apply_gg();
+void          mmu_apply_gs();
+void          mmu_dump_all();
+void          mmu_init(uint8_t c, uint8_t rn);
+void          mmu_init_ram(uint32_t c);
+void          mmu_load(uint8_t *data, size_t sz, uint16_t a);
+void          mmu_load_cartridge(uint8_t *data, size_t sz);
+void          mmu_move(uint16_t d, uint16_t s);
+uint8_t       mmu_read_no_cyc(uint16_t a);
+uint8_t       mmu_read(uint16_t a);
+unsigned int  mmu_read_16(uint16_t a);
+void          mmu_restore_ram(char *fn);
+void          mmu_restore_rtc(char *fn);
+void          mmu_restore_stat(FILE *fp);
+void          mmu_save_ram(char *fn);
+void          mmu_save_rtc(char *fn);
+void          mmu_save_stat(FILE *fp);
+char          mmu_set_cheat(char *cheat);
+void          mmu_set_rumble_cb(mmu_rumble_cb_t cb);
+void          mmu_step();
+void          mmu_term();
+void          mmu_write_no_cyc(uint16_t a, uint8_t v);
+void          mmu_write(uint16_t a, uint8_t v);
+void          mmu_write_16(uint16_t a, uint16_t v);
 
 #endif

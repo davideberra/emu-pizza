@@ -220,7 +220,7 @@ typedef struct channel_wave_s
     int16_t  wave[32];
     uint_fast32_t cycles;
     uint_fast32_t cycles_next;
-    uint_fast32_t frequency;
+    uint_fast32_t ram_access_next;
     uint_fast32_t length;
 
 } channel_wave_t;

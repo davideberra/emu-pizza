@@ -60,6 +60,10 @@ uint32_t ram_sz;
 /* main struct */
 mmu_t mmu;
 
+/* function to call when rumble */
+mmu_rumble_cb_t mmu_rumble_cb = NULL;
+
+
 /* return absolute memory address */
 void *mmu_addr(uint16_t a)
 {
@@ -81,6 +85,8 @@ void *mmu_addr_vram1()
 /* modify rom in case of Gamegenie cheat */
 void mmu_apply_gg()
 {
+    return;
+
     /* a wild cheat can occour */
     if (mmu.gg_count == 0)
         return;
@@ -97,6 +103,8 @@ void mmu_apply_gg()
 /* modify rom in case of Gameshark cheat */
 void mmu_apply_gs()
 {
+    return;
+
     /* a wild cheat can occour */
     if (mmu.gs_count == 0)
         return;
@@ -359,15 +367,15 @@ void mmu_restore_ram(char *fn)
     if (mmu.carttype == 0x03 ||
         mmu.carttype == 0x06 ||
         mmu.carttype == 0x09 ||
-        mmu.carttype == 0x0d ||
-        mmu.carttype == 0x0f ||
+        mmu.carttype == 0x0D ||
+        mmu.carttype == 0x0F ||
         mmu.carttype == 0x10 ||
         mmu.carttype == 0x13 ||
         mmu.carttype == 0x17 ||
-        mmu.carttype == 0x1b ||
-        mmu.carttype == 0x1e ||
+        mmu.carttype == 0x1B ||
+        mmu.carttype == 0x1E ||
         mmu.carttype == 0x22 ||
-        mmu.carttype == 0xff)
+        mmu.carttype == 0xFF)
     {
         FILE *fp = fopen(fn, "r+");
 
@@ -609,6 +617,11 @@ char mmu_set_cheat(char *str)
     utils_log("Unknown cheat format");
 
     return 1;
+}
+
+void mmu_set_rumble_cb(mmu_rumble_cb_t cb)
+{
+    mmu_rumble_cb = cb;
 }
 
 void mmu_term()
@@ -1041,7 +1054,23 @@ void mmu_write(uint16_t a, uint8_t v)
                 }
                 else if (a >= 0x4000 && a <= 0x5FFF)
                 {
-                    if ((0x2000 * (v & 0x0f)) < ram_sz)
+                    uint8_t mask = 0x0F;
+
+                    if (global_rumble)
+                    {
+                        mask = 0x07;
+
+                        if (mmu_rumble_cb)
+                            (*mmu_rumble_cb) ((v & 0x08) ? 1 : 0);
+
+                        /* check if we want to appizz the motor */
+/*                        if (v & 0x08)
+                            printf("APPIZZ MOTOR\n");
+                        else
+                            printf("SPEGN MOTOR\n");*/
+                    }
+
+                    if ((0x2000 * (v & mask)) < ram_sz)
                     {
                         /* is externa RAM enabled? */
                         if (!mmu.ram_external_enabled)
@@ -1078,7 +1107,7 @@ void mmu_write(uint16_t a, uint8_t v)
             mmu.rom_current_bank = b;
 
             /* re-apply cheats */
-            mmu_apply_gg();
+//            mmu_apply_gg();
         }
 
         return; 
@@ -1242,7 +1271,12 @@ void mmu_write(uint16_t a, uint8_t v)
                         mmu.hdma_dst_address += to_transfer;
                     }
                     else
+                    {
                         mmu.hdma_to_transfer = to_transfer;
+
+                        /* check if we're already into hblank phase */
+                        cycles_hdma();
+                    }
  
                     break;
             }
@@ -1258,7 +1292,7 @@ void mmu_write(uint16_t a, uint8_t v)
             mmu.dma_address = v * 256;
 
             /* initialize counter, DMA needs 672 ticks */
-            mmu.dma_cycles = 4; // 168 / 2;
+            mmu.dma_next = cycles.cnt + 4; // 168 / 2;
         }
     }
     else

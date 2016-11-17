@@ -40,6 +40,7 @@ extern char global_cpu_double_speed;
 extern char global_slow_down;
 extern char global_record_audio;
 extern char global_emulation_speed;
+extern char global_rumble;
 extern char global_save_folder[256];
 extern char global_rom_name[256];
 extern char global_cart_name[256];

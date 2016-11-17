@@ -43,7 +43,7 @@ interrupts_flags_t *cycles_if;
 /* instance of the main struct */
 cycles_t cycles = { 0, 0, 0, 0 };
 
-#define CYCLES_PAUSES 1024
+#define CYCLES_PAUSES 256
 
 /* sync timing */
 struct timespec deadline;
@@ -51,6 +51,17 @@ struct timespec deadline;
 /* hard sync stuff (for remote connection) */
 uint8_t  cycles_hs_mode = 0;
 
+/* type of next */
+typedef enum 
+{
+    CYCLES_NEXT_TYPE_CYCLES,
+    CYCLES_NEXT_TYPE_CYCLES_HS,
+    CYCLES_NEXT_TYPE_DMA,
+} cycles_next_type_enum_e;
+
+/* closest next and its type */
+uint_fast32_t            cycles_very_next;
+cycles_next_type_enum_e  cycles_next_type;
 
 /* set hard sync mode. sync is given by the remote peer + local timer */
 void cycles_start_hs()
@@ -113,10 +124,69 @@ void cycles_change_emulation_speed()
     }
 }
 
+void cycles_closest_next()
+{
+    int_fast32_t diff = cycles.cnt - cycles.next;
+
+    /* init */
+    cycles_very_next  = cycles.next; 
+    cycles_next_type  = CYCLES_NEXT_TYPE_CYCLES;
+
+    int_fast32_t diff_new = cycles.cnt - mmu.dma_next;
+
+    /* DMA? */
+    if (diff_new < diff)
+    {
+        /* this is the new lowest */
+        cycles_very_next = mmu.dma_next;
+        cycles_next_type = CYCLES_NEXT_TYPE_DMA; 
+    }
+}
+
 /* this function is gonna be called every M-cycle = 4 ticks of CPU */
 void cycles_step()
 {
     cycles.cnt += 4;
+
+/*
+    while (cycles.cnt >= cycles_very_next)
+    {
+        switch (cycles_next_type)
+        {
+            case CYCLES_NEXT_TYPE_CYCLES:
+
+                deadline.tv_nsec += 1000000000 / CYCLES_PAUSES;
+
+                if (deadline.tv_nsec > 1000000000)
+                {
+                    deadline.tv_sec += 1;
+                    deadline.tv_nsec -= 1000000000;
+                }
+
+                clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, 
+                                &deadline, NULL);
+
+                cycles.next += cycles.step;
+
+                if (cycles.cnt % cycles.clock == 0)
+                    cycles.seconds++;
+
+                break;
+
+            case CYCLES_NEXT_TYPE_DMA:
+
+                memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
+
+                mmu.dma_address = 0x0000;
+
+                mmu.dma_next = 1;
+
+                break;
+        }
+
+        cycles_closest_next();
+    }
+*/
 
     /* 65536 == cpu clock / CYCLES_PAUSES pauses every second */
     if (cycles.cnt == cycles.next) 
@@ -142,14 +212,13 @@ void cycles_step()
     if (cycles.cnt == cycles.hs_next)
     {
         /* set cycles for hard sync */
-//        cycles.hs_next += (17556 << global_cpu_double_speed);
-        cycles.hs_next += (4096 << global_cpu_double_speed);
+        cycles.hs_next += ((4096 * 4) << global_cpu_double_speed);
 
         /* hard sync is on? */
         if (cycles_hs_mode)
         {
             /* send my status and wait for peer status back */
-            serial_send_byte(serial.data, serial.clock, serial.transfer_start);
+            serial_send_byte();
 
             /* wait for reply */
             serial_wait_data();
@@ -160,22 +229,100 @@ void cycles_step()
     }
 
     /* DMA */
-    if (mmu.dma_address != 0x0000)
+    if (mmu.dma_next == cycles.cnt)
     {
-        mmu.dma_cycles -= 4;
+        memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
 
-        /* enough cycles passed? */
-        if (mmu.dma_cycles == 0)
+        /* reset address */
+        mmu.dma_address = 0x0000;
+
+        /* reset */
+        mmu.dma_next = 1;
+    }
+
+    /* update GPU state */
+    if (gpu.next == cycles.cnt)
+        gpu_step();
+
+    /* fs clock */
+    if (sound.fs_cycles_next == cycles.cnt)
+        sound_step_fs();
+        
+    /* channel one */
+    if (sound.channel_one.duty_cycles_next == cycles.cnt)
+        sound_step_ch1();
+
+    /* channel two */
+    if (sound.channel_two.duty_cycles_next == cycles.cnt)
+        sound_step_ch2();
+        
+    /* channel three */
+    if (sound.channel_three.cycles_next <= cycles.cnt)
+        sound_step_ch3();        
+        
+    /* channel four */
+    if (sound.channel_four.cycles_next == cycles.cnt)
+        sound_step_ch4();
+        
+    /* time to generate a sample? */
+    if (sound.sample_cycles_next_rounded == cycles.cnt)
+        sound_step_sample();
+
+    /* update timer state */
+    if (cycles.cnt == timer.next)
+    {
+        timer.next += 256;
+        timer.div++;
+    }
+
+    /* timer is on? */
+    if (timer.sub_next == cycles.cnt)
+    {
+        timer.sub_next += timer.threshold;
+        timer.cnt++;
+            
+        /* cnt value > 255? trigger an interrupt */
+        if (timer.cnt > 255)
         {
-            memcpy(&mmu.memory[0xFE00], &mmu.memory[mmu.dma_address], 160);
+            timer.cnt = timer.mod;
 
-            /* reset address */
-            mmu.dma_address = 0x0000;
+            /* trigger timer interrupt */
+            cycles_if->timer = 1;
         }
     }
 
+    /* update serial state */
+    if (serial.next == cycles.cnt)
+    {
+        /* nullize serial next */
+        serial.next -= 1;
+
+        /* reset counter */
+        serial.bits_sent = 0;
+
+        /* gotta reply with 0xff when asking for ff01 */
+        serial.data = 0xFF;
+
+        /* reset transfer_start flag to yell I'M DONE */
+        serial.transfer_start = 0;
+ 
+        /* if not connected, trig the fucking interrupt */
+        cycles_if->serial_io = 1;
+    }    
+}
+
+/* things to do when vsync kicks in */
+void cycles_vblank()
+{
+    return;
+
+}
+
+/* stuff tied to entering into hblank state */
+void cycles_hdma()
+{
     /* HDMA (only CGB) */
-    if (global_cgb && mmu.hdma_to_transfer)
+    if (mmu.hdma_to_transfer)
     {
         /* hblank transfer */
         if (mmu.hdma_transfer_mode)
@@ -204,113 +351,6 @@ void cycles_step()
                 mmu.hdma_src_address += 0x10;
             }
         }
-    }
-
-    /* update GPU state */
-
-    /* advance only in case of turned on display */
-    if ((*gpu.lcd_ctrl).display)
-        if (gpu.next == cycles.cnt)
-            gpu_step();
-
-    /* and proceed with sound step */
-    if (sound.channel_three.ram_access)
-        sound.channel_three.ram_access -= 4;
-        
-    /* fs clock */
-    if (sound.fs_cycles_next == cycles.cnt)
-        sound_step_fs();
-        
-    /* channel one */
-    if (sound.channel_one.active && 
-        sound.channel_one.duty_cycles_next == cycles.cnt)
-        sound_step_ch1();
-
-    /* channel two */
-    if (sound.channel_two.active && 
-        sound.channel_two.duty_cycles_next == cycles.cnt)
-        sound_step_ch2();
-        
-    /* channel three */
-    if (sound.channel_three.active && 
-        sound.channel_three.cycles_next <= cycles.cnt)
-        sound_step_ch3();        
-        
-    /* channel four */
-    if (sound.channel_four.active && 
-        sound.channel_four.cycles_next == cycles.cnt)
-        sound_step_ch4();
-        
-    /* time to generate a sample? */
-    if (sound.sample_cycles_next_rounded == cycles.cnt)
-        sound_step_sample();
-
-    /* update timer state */
-    if (cycles.cnt == timer.next)
-    {
-        timer.next += 256;
-        timer.div++;
-    }
-
-    /* timer is on? */
-    if (timer.active)
-    {
-        /* add t to current sub */
-        timer.sub += 4;
-
-        /* threshold span overtaken? increment cnt value */
-        if (timer.sub == timer.threshold)
-        {
-            timer.sub -= timer.threshold;
-            timer.cnt++;
-            
-            /* cnt value > 255? trigger an interrupt */
-            if (timer.cnt > 255)
-            {
-                timer.cnt = timer.mod;
-
-                /* trigger timer interrupt */
-                cycles_if->timer = 1;
-            }
-        }
-    }
-
-    /* update serial state */
-    if (serial.next == cycles.cnt)
-    {
-        /* nullize serial next */
-        serial.next -= 1;
-
-        /* reset counter */
-        serial.bits_sent = 0;
-
-        /* gotta reply with 0xff when asking for ff01 */
-        serial.data = 0xFF;
-
-        /* reset transfer_start flag to yell I'M DONE */
-        serial.transfer_start = 0;
-
-        /* if not connected, trig the fucking interrupt */
-        cycles_if->serial_io = 1;
-    }    
-}
-
-/* things to do when vsync kicks in */
-void cycles_vsync()
-{
-    return;
-
-    /* hard sync is on? */
-    if (cycles_hs_mode)
-    {
-        /* send my status and wait for peer status back */
-        serial_send_byte(serial.data, serial.clock, serial.transfer_start);
-
-        /* wait for reply */
-        serial_wait_data();
-
-        /* verify if we need to trigger an interrupt */
-        serial_verify_intr();
     }
 }
 

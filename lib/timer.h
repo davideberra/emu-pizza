@@ -48,7 +48,7 @@ typedef struct timer_gb_s
     uint_fast32_t next;
 
     /* spare */
-    uint_fast32_t spare;
+    uint_fast32_t sub_next;
     uint_fast32_t spare2;
     
 } timer_gb_t;

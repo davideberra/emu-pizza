@@ -96,7 +96,7 @@ void utils_ts_log(const char *format, ...)
     vsprintf(buf, format, args);
     gettimeofday(&tv, NULL);
 //    printf("%ld - %s\n", tv.tv_sec, buf);
-    printf("LINE %d - CYCLES %u - DIFF %u - %ld:%06ld - %s", 
+    printf("LINE %u - CYCLES %u - DIFF %u - %ld:%06ld - %s", 
             *(gpu.ly), cycles.cnt, cycles.cnt - prev_cycles, 
             tv.tv_sec, tv.tv_usec, buf);
 

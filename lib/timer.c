@@ -58,6 +58,9 @@ void timer_write_reg(uint16_t a, uint8_t v)
         case 0x02: timer.threshold = 64; break;
         case 0x03: timer.threshold = 256; break;
     }
+
+    if (timer.active)
+        timer.sub_next = cycles.cnt + timer.threshold;
 }
 
 uint8_t timer_read_reg(uint16_t a)
